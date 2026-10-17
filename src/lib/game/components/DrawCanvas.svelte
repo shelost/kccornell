@@ -8,6 +8,7 @@
 		strokes,
 		live = null,
 		interactive = false,
+		thumb = false,
 		placeholder = '',
 		onInk,
 		onCommit,
@@ -16,6 +17,8 @@
 		strokes: Stroke[];
 		live?: Stroke | null;
 		interactive?: boolean;
+		/** Fits whatever box the parent gives it instead of claiming most of the screen. */
+		thumb?: boolean;
 		placeholder?: string;
 		onInk?: (stroke: Stroke) => void;
 		onCommit?: (strokes: Stroke[]) => void;
@@ -149,7 +152,7 @@
 	}
 </script>
 
-<div class="board">
+<div class="board" class:thumb>
 	<div class="area">
 		<div class="paper neu-in">
 			<canvas
@@ -204,11 +207,18 @@
 
 <style>
 	.board {
+		--inset: 5px;
+		--round: 26px;
 		flex: 1;
 		min-height: 0;
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
+	}
+
+	.board.thumb {
+		--inset: 3px;
+		--round: 14px;
 	}
 
 	.area {
@@ -219,11 +229,15 @@
 		place-items: center;
 	}
 
+	.thumb .area {
+		min-height: 0;
+	}
+
 	.paper {
 		position: relative;
-		width: min(100cqw, calc((100cqh - 10px) * 2 / 3 + 10px));
-		padding: 5px;
-		border-radius: 26px;
+		width: min(100cqw, calc((100cqh - 2 * var(--inset)) * 2 / 3 + 2 * var(--inset)));
+		padding: var(--inset);
+		border-radius: var(--round);
 	}
 
 	canvas {
@@ -231,8 +245,13 @@
 		width: 100%;
 		aspect-ratio: 2 / 3;
 		background: #fff;
-		border-radius: 21px;
+		border-radius: calc(var(--round) - var(--inset));
 		touch-action: none;
+	}
+
+	.thumb .empty {
+		padding: 4px;
+		font-size: 0.68rem;
 	}
 
 	canvas.live {

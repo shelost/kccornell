@@ -34,14 +34,16 @@
 
 <div class="home">
 	{#if step === 'name'}
-		<NameStep
-			bind:value={name}
-			cta="Continue"
-			onSubmit={() => {
-				game.saveName(name);
-				step = 'room';
-			}}
-		/>
+		<div class="stage">
+			<NameStep
+				bind:value={name}
+				cta="Continue"
+				onSubmit={() => {
+					game.saveName(name);
+					step = 'room';
+				}}
+			/>
+		</div>
 	{:else}
 		<div class="stage" {@attach rise()}>
 			<h1 class="title">
@@ -75,6 +77,7 @@
 	{/if}
 	{#if step === 'room'}
 		<button class="create" type="button" disabled={game.busy} onclick={create}>Create a room</button>
+		<a class="create" href={resolve('/charades')}>Charades</a>
 	{/if}
 </div>
 

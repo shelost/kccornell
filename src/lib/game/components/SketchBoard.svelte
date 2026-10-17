@@ -1,7 +1,7 @@
 <script lang="ts">
 	import DrawCanvas from './DrawCanvas.svelte';
-	import Leaderboard from './Leaderboard.svelte';
 	import PlayerStrip from './PlayerStrip.svelte';
+	import Scoreboard from './Scoreboard.svelte';
 	import { manualKeyboard } from '$lib/game/keyboard';
 	import { getSession } from '$lib/game/session.svelte';
 	import { PLAYER_COLORS } from '$lib/game/ids';
@@ -16,20 +16,16 @@
 	const drawing = $derived(game.phase === 'sketch' && game.isDrawer);
 	const drawer = $derived(game.players.find((player) => player.id === sketch?.drawerId) ?? null);
 	const solved = $derived(Boolean(sketch?.guessed[game.playerId]));
-	const awards = $derived(
-		Object.entries(sketch?.turnPoints ?? {})
-			.filter(([, points]) => points > 0)
-			.sort((a, b) => b[1] - a[1])
-	);
 	const winner = $derived(rankByScore(game.players, game.totals)[0] ?? null);
 	const letters = $derived((sketch?.hint ?? '').replace(/\s/g, '').length);
-	const placeholder = $derived(
-		drawing
-			? 'Draw anywhere'
-			: game.phase === 'sketch'
-				? `Waiting for ${drawer?.name ?? 'the artist'}…`
-				: 'Nothing was drawn'
-	);
+	const recap = $derived.by(() => {
+		const guessers = game.players.filter((player) => player.id !== sketch?.drawerId);
+		const got = guessers.filter((player) => sketch?.guessed[player.id]).length;
+		const artist = drawer?.id === game.playerId ? 'You drew' : `${drawer?.name ?? 'Someone'} drew`;
+		if (got === 0) return `${artist} · nobody got it`;
+		if (got === guessers.length) return `${artist} · everyone got it`;
+		return `${artist} · ${got} of ${guessers.length} got it`;
+	});
 
 	async function send(event: SubmitEvent) {
 		event.preventDefault();
@@ -42,7 +38,7 @@
 </script>
 
 {#if game.phase === 'sketch-final'}
-	<section class="stack" {@attach rise()}>
+	<section class="board-screen final" {@attach rise()}>
 		<h1 class="title">That’s a wrap</h1>
 		{#if winner}
 			<div class="winner neu" {@attach pop(0.1)}>
@@ -54,7 +50,32 @@
 				<p class="muted">{game.totals[winner.id] ?? 0} points</p>
 			</div>
 		{/if}
-		<Leaderboard players={game.players} scores={game.totals} meId={game.playerId} />
+		<Scoreboard
+			players={game.players}
+			scores={game.totals}
+			meId={game.playerId}
+			limit={game.players.length}
+		/>
+	</section>
+{:else if game.phase === 'sketch-reveal'}
+	<section class="board-screen" {@attach rise()}>
+		<div class="answer neu" {@attach pop()}>
+			<div class="thumb">
+				<DrawCanvas strokes={sketch?.strokes ?? []} placeholder="No drawing" thumb />
+			</div>
+			<div class="said">
+				<p class="label">The word was</p>
+				<p class="word">{sketch?.revealWord ?? '—'}</p>
+				<p class="muted">{recap}</p>
+			</div>
+		</div>
+		<Scoreboard
+			players={game.players}
+			scores={game.totals}
+			gained={sketch?.turnPoints ?? {}}
+			meId={game.playerId}
+			drawerId={sketch?.drawerId ?? null}
+		/>
 	</section>
 {:else}
 	<section class="sketch" {@attach rise()}>
@@ -68,15 +89,9 @@
 
 		<div class="headline">
 			<h1 class="heading">
-				{#if game.phase === 'sketch'}
-					{drawing ? 'Your turn to draw' : `${drawer?.name ?? 'Someone'} is drawing`}
-				{:else}
-					The word was
-				{/if}
+				{drawing ? 'Your turn to draw' : `${drawer?.name ?? 'Someone'} is drawing`}
 			</h1>
-			{#if game.phase === 'sketch-reveal'}
-				<p class="word" {@attach pop()}>{sketch?.revealWord ?? '—'}</p>
-			{:else if drawing}
+			{#if drawing}
 				<p class="word" {@attach pop()}>{game.card?.word ?? '…'}</p>
 			{:else if solved}
 				<p class="word good" {@attach pop()}>
@@ -91,12 +106,12 @@
 			strokes={sketch?.strokes ?? []}
 			live={drawing ? null : game.ink}
 			interactive={drawing}
-			{placeholder}
+			placeholder={drawing ? 'Draw anywhere' : `Waiting for ${drawer?.name ?? 'the artist'}…`}
 			onInk={(stroke) => game.drawInk(stroke)}
 			onCommit={(strokes) => game.commitStrokes(strokes)}
 		/>
 
-		{#if game.phase === 'sketch' && !drawing}
+		{#if !drawing}
 			<form class="guess" onsubmit={send}>
 				<input
 					class="field"
@@ -114,19 +129,6 @@
 				/>
 				<button class="btn accent small" type="submit" disabled={solved || !guess.trim()}>Go</button>
 			</form>
-		{/if}
-
-		{#if game.phase === 'sketch-reveal' && awards.length > 0}
-			<div class="row">
-				{#each awards as [id, points] (id)}
-					{@const player = game.room?.players[id]}
-					{#if player}
-						<span class="pill" style:background={PLAYER_COLORS[player.color] ?? '#6a4cf5'}>
-							{player.name} +{points}{id === sketch?.drawerId ? ' ✎' : ''}
-						</span>
-					{/if}
-				{/each}
-			</div>
 		{/if}
 	</section>
 {/if}
@@ -168,6 +170,7 @@
 		font-size: clamp(1.6rem, 7vw, 2.1rem);
 		letter-spacing: -0.03em;
 		color: var(--accent);
+		overflow-wrap: anywhere;
 	}
 
 	.word.good {
@@ -213,11 +216,46 @@
 		padding: 0 24px;
 	}
 
-	.pill {
-		padding: 8px 14px;
-		border-radius: 999px;
-		color: #fff;
-		font-weight: 800;
+	.board-screen {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+	}
+
+	.board-screen.final {
+		min-height: 100%;
+	}
+
+	.board-screen > :global(:first-child) {
+		margin-top: auto;
+	}
+
+	.board-screen > :global(:last-child) {
+		margin-bottom: auto;
+	}
+
+	.answer {
+		flex: none;
+		display: flex;
+		align-items: center;
+		gap: 14px;
+		padding: 12px;
+		text-align: left;
+	}
+
+	.thumb {
+		flex: none;
+		display: flex;
+		height: clamp(96px, 18dvh, 150px);
+		aspect-ratio: 2 / 3;
+	}
+
+	.said {
+		display: grid;
+		gap: 4px;
+		min-width: 0;
 	}
 
 	.winner {

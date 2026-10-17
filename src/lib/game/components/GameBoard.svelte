@@ -58,6 +58,7 @@
 	const votedPeople = $derived(game.players.filter((p) => p.accused).length);
 	const readyCount = $derived(game.players.filter((p) => p.ready).length);
 	const pollThemes = $derived(THEMES.filter((t) => game.room?.poll.themeIds.includes(t.id)));
+	const choice = $derived(getTheme(game.pollChoice));
 	const lastTurn = $derived(
 		Boolean(game.sketch && game.sketch.turnIndex + 1 >= game.sketch.order.length)
 	);
@@ -232,18 +233,26 @@
 					{/if}
 				</section>
 			{:else if game.phase === 'poll'}
-				<section class="stack" {@attach rise()}>
-					<h1 class="title">Pick a theme</h1>
-					<p class="muted">{votedThemes}/{game.playerCount} voted</p>
+				<section class="poll" {@attach rise()}>
+					<h1 class="title">{game.isHost ? 'Pick a theme' : 'Vote for a theme'}</h1>
+					<p class="muted">
+						{votedThemes}/{game.playerCount} voted · {game.isHost
+							? 'your pick is final'
+							: `${host?.name ?? 'The host'} makes the final call`}
+					</p>
 					<div class="themes">
 						{#each pollThemes as theme (theme.id)}
 							{@const votes = game.pollCounts[theme.id] ?? 0}
+							{@const picked = game.room.poll.winnerId === theme.id}
 							<button
 								class="theme"
 								class:on={game.me?.themeVote === theme.id}
+								class:pick={picked}
 								type="button"
-								onclick={() => game.voteTheme(theme.id)}
+								aria-pressed={game.isHost ? picked : game.me?.themeVote === theme.id}
+								onclick={() => (game.isHost ? game.pickTheme(theme.id) : game.voteTheme(theme.id))}
 							>
+								{#if picked}<i {@attach pop()}>Host pick</i>{/if}
 								<strong>{theme.label}</strong>
 								<span>{theme.korean}</span>
 								{#if votes > 0}<em>{votes}</em>{/if}
@@ -338,7 +347,9 @@
 				{#if game.mode === 'sketch'}
 					{@render liveSketchSettings()}
 				{/if}
-				<button class="btn accent" type="button" onclick={() => game.deal()}>Start game</button>
+				<button class="btn accent" type="button" onclick={() => game.deal()}>
+					{choice ? `Start with ${choice.label}` : 'Start game'}
+				</button>
 			{:else if game.phase === 'reveal'}
 				<button class="btn accent" type="button" onclick={() => game.startDiscuss()}>
 					Start discussion
@@ -469,12 +480,20 @@
 	.stage {
 		flex: 1;
 		min-height: 0;
-		overflow: hidden;
+		overflow-x: hidden;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		scrollbar-width: none;
+	}
+
+	.stage::-webkit-scrollbar {
+		display: none;
 	}
 
 	.fill .stage {
 		display: flex;
 		flex-direction: column;
+		overflow: hidden;
 	}
 
 	.fill .dock {
@@ -559,17 +578,35 @@
 		font-weight: 900;
 	}
 
+	.poll {
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
 	.themes {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		scrollbar-width: none;
 		display: grid;
 		grid-template-columns: 1fr 1fr;
+		align-content: start;
 		gap: 14px;
+		padding: 14px 6px 18px;
+	}
+
+	.themes::-webkit-scrollbar {
+		display: none;
 	}
 
 	.theme {
 		position: relative;
 		display: grid;
 		gap: 2px;
-		padding: 18px 10px;
+		padding: 16px 10px;
 		border-radius: 22px;
 		box-shadow: var(--raise-sm);
 		transition: box-shadow 0.15s ease;
@@ -608,6 +645,35 @@
 
 	.theme.on strong {
 		color: var(--accent);
+	}
+
+	.theme.pick {
+		box-shadow:
+			0 0 0 3px var(--gold),
+			var(--raise-sm);
+	}
+
+	.theme.on.pick {
+		box-shadow:
+			0 0 0 3px var(--gold),
+			var(--press);
+	}
+
+	.theme i {
+		position: absolute;
+		top: -9px;
+		inset-inline: 0;
+		width: max-content;
+		margin-inline: auto;
+		padding: 2px 10px;
+		border-radius: 999px;
+		background: var(--gold);
+		color: #fff;
+		font-size: 0.62rem;
+		font-style: normal;
+		font-weight: 900;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
 	}
 
 	.role {

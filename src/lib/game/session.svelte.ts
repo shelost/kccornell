@@ -125,6 +125,19 @@ function tallyVotes(players: Player[]): { winner: string | null; counts: Record<
 	return { winner: leaders.length === 1 ? (leaders[0] ?? null) : null, counts };
 }
 
+function topVoted(ids: string[], counts: Record<string, number>): string {
+	let winner = ids[0] ?? THEMES[0]!.id;
+	let best = -1;
+	for (const id of ids) {
+		const votes = counts[id] ?? 0;
+		if (votes > best) {
+			best = votes;
+			winner = id;
+		}
+	}
+	return winner;
+}
+
 export class GameSession {
 	room = $state.raw<RoomPublic | null>(null);
 	card = $state.raw<PrivateCard | null>(null);
@@ -186,6 +199,10 @@ export class GameSession {
 		}
 		return counts;
 	});
+	/** The theme the next game uses: the host's pick, otherwise the most-voted. */
+	pollChoice = $derived(
+		this.room?.poll.winnerId || topVoted(this.room?.poll.themeIds ?? [], this.pollCounts)
+	);
 
 	rememberedName(): string {
 		if (typeof localStorage === 'undefined') return '';
@@ -444,6 +461,17 @@ export class GameSession {
 		await this.#write({ [`players/${this.playerId}/themeVote`]: themeId });
 	}
 
+	/** The host's tap is final: it sets the theme and counts as their vote. Tapping again clears it. */
+	async pickTheme(themeId: string) {
+		const room = this.room;
+		if (!this.isHost || !room || room.phase !== 'poll' || room.poll.status !== 'open') return;
+		const next = room.poll.winnerId === themeId ? null : themeId;
+		await this.#write({
+			'poll/winnerId': next,
+			[`players/${this.playerId}/themeVote`]: next
+		});
+	}
+
 	async deal() {
 		const room = this.room;
 		if (!this.isHost || !room) return;
@@ -451,7 +479,7 @@ export class GameSession {
 			await this.startSketch();
 			return;
 		}
-		const theme = getTheme(this.#pollWinner());
+		const theme = getTheme(this.pollChoice);
 		if (!theme) {
 			this.#fail('Pick a theme first');
 			return;
@@ -588,7 +616,7 @@ export class GameSession {
 	async startSketch() {
 		const room = this.room;
 		if (!this.isHost || !room) return;
-		const theme = getTheme(this.#pollWinner());
+		const theme = getTheme(this.pollChoice);
 		if (!theme) {
 			this.#fail('Pick a theme first');
 			return;
@@ -603,7 +631,7 @@ export class GameSession {
 		const room = this.room;
 		const sketch = room?.sketch;
 		if (!this.isHost || !room || !sketch) return;
-		const theme = getTheme(room.round.themeId ?? this.#pollWinner());
+		const theme = getTheme(room.round.themeId ?? this.pollChoice);
 		if (!theme) return;
 		const newcomers = this.players
 			.map((player) => player.id)
@@ -669,25 +697,6 @@ export class GameSession {
 
 	#zeroScores(): Record<string, number> {
 		return Object.fromEntries(this.players.map((player) => [player.id, 0]));
-	}
-
-	#topVoted(): string {
-		const ids = this.room?.poll.themeIds ?? [];
-		let winner = ids[0] ?? THEMES[0]!.id;
-		let best = -1;
-		for (const id of ids) {
-			const votes = this.pollCounts[id] ?? 0;
-			if (votes > best) {
-				best = votes;
-				winner = id;
-			}
-		}
-		return winner;
-	}
-
-	#pollWinner(): string {
-		const poll = this.room?.poll;
-		return poll?.status === 'closed' && poll.winnerId ? poll.winnerId : this.#topVoted();
 	}
 
 	#pickWord(theme: Theme): { secret: string; usedWords: string[] } {

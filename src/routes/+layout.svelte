@@ -8,7 +8,9 @@
 	import { site } from '$lib/data';
 
 	let { children } = $props();
-	const isPlay = $derived(page.url.pathname.startsWith('/play'));
+	const isPlay = $derived(
+		page.url.pathname.startsWith('/play') || page.url.pathname.startsWith('/charades')
+	);
 
 	onNavigate((navigation) => {
 		if (!document.startViewTransition) return;
