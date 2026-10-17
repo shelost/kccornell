@@ -4,9 +4,11 @@
 	import Nav from '$lib/components/Nav.svelte';
 	import Footer from '$lib/components/Footer.svelte';
 	import { onNavigate } from '$app/navigation';
+	import { page } from '$app/state';
 	import { site } from '$lib/data';
 
 	let { children } = $props();
+	const isPlay = $derived(page.url.pathname.startsWith('/play'));
 
 	onNavigate((navigation) => {
 		if (!document.startViewTransition) return;
@@ -25,17 +27,25 @@
 	<meta name="description" content={site.description} />
 </svelte:head>
 
-<Nav />
+{#if !isPlay}
+	<Nav />
+{/if}
 
-<main>
+<main class:is-play={isPlay}>
 	{@render children()}
 </main>
 
-<Footer />
+{#if !isPlay}
+	<Footer />
+{/if}
 
 <style>
 	main {
 		padding-top: 64px;
 		min-height: 100dvh;
+	}
+
+	main.is-play {
+		padding-top: 0;
 	}
 </style>

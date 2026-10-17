@@ -29,7 +29,12 @@
 
 		<nav class="links" aria-label="Primary">
 			{#each navLinks as link (link.href)}
-				<a href={link.href} class:active={page.url.pathname === link.href}>{link.label}</a>
+				<a
+					href={link.href}
+					class:active={link.href === '/'
+						? page.url.pathname === '/'
+						: page.url.pathname.startsWith(link.href)}>{link.label}</a
+				>
 			{/each}
 		</nav>
 
@@ -53,7 +58,9 @@
 			{#each navLinks as link, i (link.href)}
 				<a
 					href={link.href}
-					class:active={page.url.pathname === link.href}
+					class:active={link.href === '/'
+						? page.url.pathname === '/'
+						: page.url.pathname.startsWith(link.href)}
 					in:fly={{ y: 28, duration: 500, delay: 90 + i * 65, easing: quintOut }}
 					onclick={() => (open = false)}
 				>
