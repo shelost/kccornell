@@ -38,23 +38,6 @@ export function pop(delay = 0): Attachment {
 	};
 }
 
-export function lettersIn(): Attachment {
-	return (element) => {
-		if (reduceMotion()) return;
-		const ctx = gsap.context(() => {
-			gsap.from('.letter', {
-				y: 28,
-				autoAlpha: 0,
-				rotate: -8,
-				stagger: 0.045,
-				duration: 0.7,
-				ease: 'back.out(1.5)'
-			});
-		}, element);
-		return () => ctx.revert();
-	};
-}
-
 export function flipCard(): Attachment {
 	return (element) => {
 		if (reduceMotion()) return;

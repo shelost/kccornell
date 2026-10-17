@@ -1,16 +1,56 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import Alerts from './Alerts.svelte';
+	import CountdownBar from './CountdownBar.svelte';
+	import ModePicker from './ModePicker.svelte';
 	import PlayerGrid from './PlayerGrid.svelte';
-	import TimerFace from './TimerFace.svelte';
+	import SketchBoard from './SketchBoard.svelte';
 	import { getSession } from '$lib/game/session.svelte';
 	import { THEMES, getTheme } from '$lib/game/themes';
 	import { PLAYER_COLORS } from '$lib/game/ids';
 	import { rise, pop, flipCard } from '$lib/game/motion';
-	import { MAX_PLAYERS } from '$lib/game/types';
+	import { GAMES, MAX_PLAYERS } from '$lib/game/types';
+
+	type Options = [value: number, label: string][];
+
+	const IMPOSTER_OPTIONS: Options = [
+		[1, '1'],
+		[2, '2'],
+		[3, '3']
+	];
+	const DISCUSS_OPTIONS: Options = [
+		[60, '1 min'],
+		[90, '1.5 min'],
+		[120, '2 min'],
+		[180, '3 min'],
+		[300, '5 min']
+	];
+	const DRAW_OPTIONS: Options = [
+		[45, '45 sec'],
+		[60, '1 min'],
+		[120, '2 min'],
+		[180, '3 min'],
+		[300, '5 min'],
+		[600, '10 min']
+	];
+	const ROUND_OPTIONS: Options = [
+		[1, '1 round'],
+		[2, '2 rounds'],
+		[3, '3 rounds']
+	];
+
+	function withCurrent(options: Options, value: number): Options {
+		if (options.some(([option]) => option === value)) return options;
+		const label = value % 60 === 0 ? `${value / 60} min` : `${value} sec`;
+		const extra: Options[number] = [value, label];
+		return [...options, extra].sort((a, b) => a[0] - b[0]);
+	}
 
 	const game = getSession();
 	let copied = $state(false);
 
+	const meta = $derived(GAMES[game.mode]);
+	const host = $derived(game.players.find((p) => p.id === game.room?.hostId) ?? null);
 	const shareUrl = $derived(
 		typeof location === 'undefined' ? '' : `${location.origin}/play/${game.code}`
 	);
@@ -18,12 +58,44 @@
 	const votedPeople = $derived(game.players.filter((p) => p.accused).length);
 	const readyCount = $derived(game.players.filter((p) => p.ready).length);
 	const pollThemes = $derived(THEMES.filter((t) => game.room?.poll.themeIds.includes(t.id)));
+	const lastTurn = $derived(
+		Boolean(game.sketch && game.sketch.turnIndex + 1 >= game.sketch.order.length)
+	);
+	const fill = $derived(game.phase === 'sketch' || game.phase === 'sketch-reveal');
+	const subtitle = $derived.by(() => {
+		const sketch = game.sketch;
+		if (!fill || !sketch?.order.length) return '';
+		const turn = Math.min(sketch.turnIndex + 1, sketch.order.length);
+		return `${game.theme?.label ?? 'Sketch'} · ${turn}/${sketch.order.length}`;
+	});
+	const timer = $derived.by(() => {
+		const room = game.room;
+		if (room?.phase === 'discuss') {
+			return {
+				endsAt: room.round.timerEndsAt ?? null,
+				pausedMs: room.round.timerPausedMs ?? null,
+				totalMs: room.settings.discussSeconds * 1000
+			};
+		}
+		if (room?.phase === 'sketch') {
+			return {
+				endsAt: room.sketch?.turnEndsAt ?? null,
+				pausedMs: null,
+				totalMs: room.settings.drawSeconds * 1000
+			};
+		}
+		return null;
+	});
+
+	function flash() {
+		copied = true;
+		setTimeout(() => (copied = false), 1600);
+	}
 
 	async function copyCode() {
 		try {
 			await navigator.clipboard.writeText(game.code);
-			copied = true;
-			setTimeout(() => (copied = false), 1600);
+			flash();
 		} catch {
 			copied = false;
 		}
@@ -31,170 +103,185 @@
 
 	async function share() {
 		if (navigator.share) {
-			await navigator.share({ title: 'Imposter', text: `Join ${game.code}`, url: shareUrl });
+			await navigator.share({ title: 'Join my game', text: `Room ${game.code}`, url: shareUrl });
 			return;
 		}
 		await navigator.clipboard.writeText(shareUrl);
-		copied = true;
-		setTimeout(() => (copied = false), 1600);
+		flash();
 	}
-
 </script>
 
-{#if game.room}
-	<header class="top" {@attach rise()}>
-		<a href={resolve('/play')} class="back">Leave</a>
-		<div>
-			<p class="play-kicker">{game.phase}</p>
-			<p class="code">{game.code}</p>
+{#snippet setting(label: string, value: number, options: Options, pick: (value: number) => void)}
+	<label class="set">
+		<span>{label}</span>
+		<select {value} onchange={(e) => pick(Number(e.currentTarget.value))}>
+			{#each options as [optionValue, optionLabel] (optionValue)}
+				<option value={optionValue}>{optionLabel}</option>
+			{/each}
+		</select>
+	</label>
+{/snippet}
+
+{#snippet sketchSettings(includeRounds: boolean)}
+	{@render setting(
+		'Draw time',
+		game.room?.settings.drawSeconds ?? 600,
+		withCurrent(DRAW_OPTIONS, game.room?.settings.drawSeconds ?? 600),
+		(n) => game.setDrawSeconds(n)
+	)}
+	{#if includeRounds}
+		{@render setting(
+			'Rounds',
+			game.room?.settings.sketchRounds ?? 1,
+			ROUND_OPTIONS,
+			(n) => game.setSetting('sketchRounds', n)
+		)}
+	{/if}
+{/snippet}
+
+{#snippet liveSketchSettings()}
+	<details class="settings live">
+		<summary class="btn small">Settings</summary>
+		<div class="stack panel">
+			{@render sketchSettings(false)}
 		</div>
-		<span class="count">{game.playerCount}/{MAX_PLAYERS}</span>
+	</details>
+{/snippet}
+
+{#snippet hostMenu()}
+	<details class="host-menu">
+		<summary class="pill-btn">Host</summary>
+		<div class="menu stack">
+			{@render sketchSettings(false)}
+			<button class="btn small" type="button" onclick={() => game.endSketchTurn()}>End turn</button>
+		</div>
+	</details>
+{/snippet}
+
+{#if game.room}
+<div class="shell" class:fill>
+	{#if timer}
+		<CountdownBar endsAt={timer.endsAt} pausedMs={timer.pausedMs} totalMs={timer.totalMs} />
+	{/if}
+
+	<header class="top">
+		<a href={resolve('/play')} class="leave" onclick={() => void game.leave()}>Leave</a>
+		{#if subtitle}
+			<span class="subtitle">{subtitle}</span>
+		{:else}
+			<strong class="room">{game.code}</strong>
+		{/if}
+		{#if game.isHost && game.phase === 'sketch'}
+			{@render hostMenu()}
+		{:else}
+			<span class="count">{game.playerCount}/{MAX_PLAYERS}</span>
+		{/if}
 	</header>
+
+	<Alerts items={game.alerts} />
 
 	{#if game.error}
 		<p class="warn">{game.error}</p>
 	{/if}
 
 	{#key game.phase}
-		<div class="stage">
+		<main class="stage">
 			{#if game.phase === 'lobby'}
 				<section class="stack" {@attach rise()}>
-					<div class="play-card">
-						<p class="play-kicker">Room code</p>
-						<p class="play-code">{game.code}</p>
-						<div class="row">
-							<button class="play-btn ghost" type="button" onclick={copyCode}>
-								{copied ? 'Copied' : 'Copy code'}
-							</button>
-							<button class="play-btn ghost" type="button" onclick={share}>Share link</button>
-						</div>
-					</div>
+					<button class="code-card neu" type="button" onclick={copyCode} {@attach pop()}>
+						<span class="label">{copied ? 'Copied' : 'Room code · tap to copy'}</span>
+						<strong>{game.code}</strong>
+					</button>
+					<button class="btn small share" type="button" onclick={share}>Share invite link</button>
 
 					<PlayerGrid players={game.players} hostId={game.room.hostId} meId={game.playerId} />
 
 					{#if game.isHost}
-						<div class="play-card stack-s">
-							<p class="play-kicker">Themes in the poll</p>
-							<div class="chip-row">
-								{#each THEMES as theme (theme.id)}
-									<button
-										class="mini"
-										class:on={game.room.poll.themeIds.includes(theme.id)}
-										type="button"
-										onclick={() => game.togglePollTheme(theme.id)}
-									>
-										{theme.label}
-									</button>
-								{/each}
+						<ModePicker value={game.mode} onPick={(mode) => game.setMode(mode)} />
+						<details class="settings">
+							<summary class="btn small">Settings</summary>
+							<div class="stack panel">
+								<p class="label">Themes in the poll</p>
+								<div class="row">
+									{#each THEMES as theme (theme.id)}
+										<button
+											class="chip"
+											class:on={game.room.poll.themeIds.includes(theme.id)}
+											type="button"
+											onclick={() => game.togglePollTheme(theme.id)}
+										>
+											{theme.label}
+										</button>
+									{/each}
+								</div>
+								{#if game.mode === 'imposter'}
+									{@render setting('Imposters', game.room.settings.imposterCount, IMPOSTER_OPTIONS, (n) =>
+										game.setImposterCount(n)
+									)}
+									{@render setting('Discussion', game.room.settings.discussSeconds, DISCUSS_OPTIONS, (n) =>
+										game.setSetting('discussSeconds', n)
+									)}
+								{:else}
+									{@render sketchSettings(true)}
+								{/if}
 							</div>
-							<label class="set">
-								Imposters
-								<select
-									value={game.room.settings.imposterCount}
-									onchange={(e) =>
-										game.setImposterCount(Number((e.currentTarget as HTMLSelectElement).value))}
-								>
-									<option value={1}>1</option>
-									<option value={2}>2</option>
-									<option value={3}>3</option>
-								</select>
-							</label>
-							<label class="set">
-								Timer
-								<select
-									value={game.room.settings.discussSeconds}
-									onchange={(e) =>
-										game.setDiscussSeconds(Number((e.currentTarget as HTMLSelectElement).value))}
-								>
-									<option value={60}>1 min</option>
-									<option value={90}>1.5 min</option>
-									<option value={120}>2 min</option>
-									<option value={180}>3 min</option>
-									<option value={300}>5 min</option>
-								</select>
-							</label>
-						</div>
+						</details>
 					{:else}
-						<p class="note">Waiting on the game master to start a theme poll.</p>
+						<p class="game-tag">{meta.label}</p>
+						<p class="muted">Waiting for {host?.name ?? 'the host'} to start…</p>
 					{/if}
 				</section>
 			{:else if game.phase === 'poll'}
 				<section class="stack" {@attach rise()}>
-					<div>
-						<p class="play-kicker">Vote a theme</p>
-						<h2 class="h">What are we playing?</h2>
-						<p class="note">{votedThemes}/{game.playerCount} voted</p>
-					</div>
-					<div class="theme-grid">
+					<h1 class="title">Pick a theme</h1>
+					<p class="muted">{votedThemes}/{game.playerCount} voted</p>
+					<div class="themes">
 						{#each pollThemes as theme (theme.id)}
+							{@const votes = game.pollCounts[theme.id] ?? 0}
 							<button
-								class="choice"
+								class="theme"
 								class:on={game.me?.themeVote === theme.id}
-								class:win={game.room.poll.winnerId === theme.id}
 								type="button"
-								onclick={() =>
-									game.room?.poll.status === 'open'
-										? game.voteTheme(theme.id)
-										: game.isHost
-											? game.chooseTheme(theme.id)
-											: null}
+								onclick={() => game.voteTheme(theme.id)}
 							>
 								<strong>{theme.label}</strong>
 								<span>{theme.korean}</span>
-								<em>{game.pollCounts[theme.id] ?? 0}</em>
+								{#if votes > 0}<em>{votes}</em>{/if}
 							</button>
 						{/each}
 					</div>
-					{#if game.room.poll.status === 'closed'}
-						<p class="note">
-							Winner: {getTheme(game.room.poll.winnerId)?.label ?? '—'}. Host can still tap another.
-						</p>
-					{/if}
 				</section>
 			{:else if game.phase === 'reveal'}
 				<section class="stack" {@attach pop()}>
-					<p class="play-kicker">{getTheme(game.card?.themeId)?.label ?? 'Theme'}</p>
-					<div class="role-card" class:imposter={game.card?.isImposter} {@attach flipCard()}>
+					<p class="label">{getTheme(game.card?.themeId)?.label ?? 'Your card'}</p>
+					<div class="role neu" class:imposter={game.card?.isImposter} {@attach flipCard()}>
 						{#if game.card?.isImposter}
-							<p class="play-kicker">Shh</p>
-							<p class="secret">You’re the imposter</p>
-							<p class="play-lead">You don’t know the word. Bluff. Guess. Survive the vote.</p>
+							<p class="label">Shh…</p>
+							<p class="big">You’re the imposter</p>
+							<p class="muted">Blend in and figure out the word.</p>
 						{:else}
-							<p class="play-kicker">The word</p>
-							<p class="secret">{game.card?.word ?? '…'}</p>
-							<p class="play-lead">Describe it without saying it. Find the faker.</p>
+							<p class="label">The word</p>
+							<p class="big">{game.card?.word ?? '…'}</p>
+							<p class="muted">Describe it without saying it.</p>
 						{/if}
 					</div>
-					<p class="note">{readyCount}/{game.playerCount} looked</p>
+					<p class="muted">{readyCount}/{game.playerCount} ready</p>
 					{#if !game.me?.ready}
-						<button class="play-btn primary" type="button" onclick={() => game.setReady()}>
-							I looked
-						</button>
+						<button class="btn accent" type="button" onclick={() => game.setReady()}>Got it</button>
 					{/if}
 				</section>
 			{:else if game.phase === 'discuss'}
 				<section class="stack" {@attach rise()}>
-					<p class="play-kicker">{game.theme?.label ?? 'Discuss'}</p>
-					<TimerFace
-						endsAt={game.room.round.timerEndsAt}
-						pausedMs={game.room.round.timerPausedMs}
-					/>
-					<div class="tiny-card" class:imposter={game.card?.isImposter}>
-						{#if game.card?.isImposter}
-							You’re the imposter
-						{:else}
-							Word: {game.card?.word}
-						{/if}
-					</div>
+					<h1 class="title">Discuss</h1>
+					<p class="reminder" class:imposter={game.card?.isImposter}>
+						{game.card?.isImposter ? 'You’re the imposter' : game.card?.word}
+					</p>
 					<PlayerGrid players={game.players} hostId={game.room.hostId} meId={game.playerId} />
 				</section>
 			{:else if game.phase === 'vote'}
 				<section class="stack" {@attach rise()}>
-					<div>
-						<p class="play-kicker">Vote</p>
-						<h2 class="h">Who is faking it?</h2>
-						<p class="note">{votedPeople}/{game.playerCount} in</p>
-					</div>
+					<h1 class="title">Who’s the imposter?</h1>
+					<p class="muted">{votedPeople}/{game.playerCount} voted</p>
 					<PlayerGrid
 						players={game.players}
 						hostId={game.room.hostId}
@@ -206,143 +293,242 @@
 				</section>
 			{:else if game.phase === 'result'}
 				<section class="stack" {@attach pop()}>
-					<p class="play-kicker">{game.room.result?.villageWon ? 'Caught' : 'Got away'}</p>
-					<h2 class="h secret">
-						{game.room.result?.villageWon ? 'Village wins' : 'Imposters win'}
-					</h2>
-					<div class="play-card">
-						<p class="note">The word was</p>
-						<p class="secret">{game.room.result?.secret}</p>
+					<p class="label">{game.room.result?.villageWon ? 'Caught!' : 'Got away'}</p>
+					<h1 class="title">
+						{game.room.result?.villageWon ? 'Players win' : 'Imposter wins'}
+					</h1>
+					<div class="neu">
+						<p class="label">The word was</p>
+						<p class="big">{game.room.result?.secret}</p>
 					</div>
-					<div class="chip-row">
+					<div class="row">
 						{#each game.room.result?.imposters ?? [] as id (id)}
 							{@const p = game.room.players[id]}
 							{#if p}
-								<span class="pill" style:background={PLAYER_COLORS[p.color]}>
-									{p.name}
-								</span>
+								<span class="pill" style:background={PLAYER_COLORS[p.color]}>{p.name}</span>
 							{/if}
 						{/each}
 					</div>
-					{#if game.room.result?.accused}
-						<p class="note">
-							Voted out: {game.room.players[game.room.result.accused]?.name ?? 'a tie'}
-						</p>
-					{:else}
-						<p class="note">It was a tie — imposters slip away.</p>
-					{/if}
+					<p class="muted">
+						{#if game.room.result?.accused}
+							Voted out: {game.room.players[game.room.result.accused]?.name ?? 'someone'}
+						{:else}
+							Tie vote — the imposter slips away.
+						{/if}
+					</p>
 				</section>
+			{:else if game.phase.startsWith('sketch')}
+				<SketchBoard />
 			{/if}
-		</div>
+		</main>
 	{/key}
 
-	{#if game.isHost}
+	{#if game.isHost && game.phase !== 'sketch'}
 		<div class="dock">
 			{#if game.phase === 'lobby'}
 				<button
-					class="play-btn accent"
+					class="btn accent"
 					type="button"
-					disabled={game.playerCount < 3}
+					disabled={game.playerCount < meta.minPlayers}
 					onclick={() => game.startPoll()}
 				>
-					{game.playerCount < 3 ? 'Need 3 players' : 'Start theme poll'}
-				</button>
-			{:else if game.phase === 'poll' && game.room.poll.status === 'open'}
-				<button class="play-btn primary" type="button" onclick={() => game.lockPoll()}>
-					Close poll
+					{game.playerCount < meta.minPlayers ? `Need ${meta.minPlayers} players` : 'Start'}
 				</button>
 			{:else if game.phase === 'poll'}
-				<button class="play-btn accent" type="button" onclick={() => game.deal()}>
-					Deal cards
-				</button>
+				{#if game.mode === 'sketch'}
+					{@render liveSketchSettings()}
+				{/if}
+				<button class="btn accent" type="button" onclick={() => game.deal()}>Start game</button>
 			{:else if game.phase === 'reveal'}
-				<button class="play-btn accent" type="button" onclick={() => game.startDiscuss()}>
+				<button class="btn accent" type="button" onclick={() => game.startDiscuss()}>
 					Start discussion
 				</button>
 			{:else if game.phase === 'discuss'}
-				<div class="row">
+				<div class="pair">
 					{#if game.room.round.timerEndsAt}
-						<button class="play-btn ghost" type="button" onclick={() => game.pauseTimer()}>Pause</button>
+						<button class="btn" type="button" onclick={() => game.pauseTimer()}>Pause</button>
 					{:else}
-						<button class="play-btn ghost" type="button" onclick={() => game.resumeTimer()}>Resume</button>
+						<button class="btn" type="button" onclick={() => game.resumeTimer()}>Resume</button>
 					{/if}
-					<button class="play-btn ghost" type="button" onclick={() => game.addTime(30)}>+30s</button>
+					<button class="btn" type="button" onclick={() => game.addTime(30)}>+30s</button>
 				</div>
-				<button class="play-btn accent" type="button" onclick={() => game.openVote()}>
-					Go to vote
-				</button>
+				<button class="btn accent" type="button" onclick={() => game.openVote()}>Vote now</button>
 			{:else if game.phase === 'vote'}
-				<button class="play-btn danger" type="button" onclick={() => game.reveal()}>
-					Reveal
-				</button>
-			{:else if game.phase === 'result'}
-				<button class="play-btn accent" type="button" onclick={() => game.nextRound()}>
-					Next round
+				<button class="btn danger" type="button" onclick={() => game.reveal()}>Reveal</button>
+			{:else if game.phase === 'result' || game.phase === 'sketch-final'}
+				<button class="btn accent" type="button" onclick={() => game.nextRound()}>Play again</button>
+			{:else if game.phase === 'sketch-reveal'}
+				{@render liveSketchSettings()}
+				<button class="btn accent" type="button" onclick={() => game.nextDrawer()}>
+					{lastTurn ? 'Final scores' : 'Next drawer'}
 				</button>
 			{/if}
 		</div>
 	{/if}
+</div>
 {/if}
 
 <style>
-	.top {
+	.shell {
+		flex: 1;
+		min-height: 0;
 		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		margin-bottom: 18px;
+		flex-direction: column;
 	}
 
-	.back,
+	.shell.fill {
+		height: 100%;
+		max-height: 100%;
+		overflow: hidden;
+	}
+
+	.top {
+		display: grid;
+		grid-template-columns: 1fr auto 1fr;
+		align-items: center;
+		margin-bottom: 22px;
+	}
+
+	.fill .top {
+		margin-bottom: 2px;
+	}
+
+	.leave,
 	.count {
-		font-size: 0.82rem;
+		font-size: 0.85rem;
 		font-weight: 800;
 		color: var(--muted);
 	}
 
-	.code {
-		font-family: var(--play-display);
-		font-size: 1.35rem;
-		letter-spacing: 0.14em;
-		font-weight: 700;
+	.leave {
+		justify-self: start;
 	}
 
-	.stack {
-		display: grid;
-		gap: 14px;
+	.count {
+		justify-self: end;
 	}
 
-	.stack-s {
-		display: grid;
-		gap: 12px;
+	.room {
+		font-size: 1.15rem;
+		font-weight: 900;
+		letter-spacing: 0.2em;
+		padding-left: 0.2em;
 	}
 
-	.row {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 8px;
+	.subtitle {
+		max-width: 52vw;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: 0.7rem;
+		font-weight: 800;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--muted);
 	}
 
-	.h {
-		font-family: var(--play-display);
-		font-size: clamp(1.8rem, 7vw, 2.4rem);
-		letter-spacing: -0.04em;
-		line-height: 1;
+	.host-menu {
+		position: relative;
+		justify-self: end;
 	}
 
-	.mini {
-		border: 1px solid var(--line);
-		background: #fff;
+	.host-menu summary {
+		list-style: none;
+		cursor: pointer;
+	}
+
+	.host-menu summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.pill-btn {
+		padding: 6px 14px;
 		border-radius: 999px;
-		padding: 8px 12px;
-		font-size: 0.82rem;
+		box-shadow: var(--raise-sm);
+		font-size: 0.85rem;
 		font-weight: 800;
 	}
 
-	.mini.on {
-		background: var(--ink);
-		color: #fff;
-		border-color: var(--ink);
+	.host-menu[open] .pill-btn {
+		box-shadow: var(--press-sm);
+		color: var(--accent);
+	}
+
+	.menu {
+		position: absolute;
+		top: calc(100% + 10px);
+		right: 0;
+		z-index: 30;
+		width: min(280px, 80vw);
+		padding: 16px;
+		border-radius: 22px;
+		background: var(--bg);
+		box-shadow: var(--raise);
+	}
+
+	.stage {
+		flex: 1;
+		min-height: 0;
+		overflow: hidden;
+	}
+
+	.fill .stage {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.fill .dock {
+		margin-top: 10px;
+		padding-top: 4px;
+	}
+
+	.code-card {
+		display: grid;
+		gap: 6px;
+		width: 100%;
+	}
+
+	.code-card strong {
+		font-size: clamp(3rem, 16vw, 4.4rem);
+		font-weight: 900;
+		letter-spacing: 0.18em;
+		line-height: 1;
+		padding-left: 0.18em;
+	}
+
+	.share {
+		justify-self: center;
+	}
+
+	.settings {
+		display: grid;
+		justify-items: center;
+	}
+
+	.settings summary {
+		list-style: none;
+		cursor: pointer;
+	}
+
+	.settings summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.settings[open] summary {
+		box-shadow: var(--press-sm);
+		color: var(--accent);
+	}
+
+	.settings.live {
+		width: 100%;
+	}
+
+	.panel {
+		width: 100%;
+		margin-top: 16px;
+		padding: 18px;
+		border-radius: 24px;
+		box-shadow: var(--press);
 	}
 
 	.set {
@@ -351,101 +537,114 @@
 		justify-content: space-between;
 		gap: 12px;
 		font-weight: 800;
-		font-size: 0.92rem;
 	}
 
 	.set select {
+		padding: 10px 14px;
+		border: none;
+		border-radius: 14px;
+		background: var(--bg);
+		box-shadow: var(--raise-sm);
+		color: var(--ink);
 		font: inherit;
 		font-weight: 800;
-		border-radius: 12px;
-		border: 1px solid var(--line);
-		background: #fff;
-		padding: 8px 10px;
 	}
 
-	.theme-grid {
+	.game-tag {
+		justify-self: center;
+		padding: 10px 20px;
+		border-radius: 999px;
+		box-shadow: var(--press-sm);
+		color: var(--accent);
+		font-weight: 900;
+	}
+
+	.themes {
 		display: grid;
-		gap: 8px;
+		grid-template-columns: 1fr 1fr;
+		gap: 14px;
 	}
 
-	.choice {
+	.theme {
+		position: relative;
 		display: grid;
-		grid-template-columns: 1fr auto;
-		grid-template-rows: auto auto;
-		column-gap: 10px;
-		align-items: center;
+		gap: 2px;
+		padding: 18px 10px;
+		border-radius: 22px;
+		box-shadow: var(--raise-sm);
+		transition: box-shadow 0.15s ease;
 	}
 
-	.choice strong {
-		font-size: 1.05rem;
+	.theme strong {
+		font-size: 1rem;
+		font-weight: 800;
 	}
 
-	.choice span {
-		grid-column: 1;
-		font-size: 0.8rem;
+	.theme span {
+		font-size: 0.78rem;
 		color: var(--muted);
 		font-weight: 700;
 	}
 
-	.choice em {
-		grid-row: 1 / span 2;
-		grid-column: 2;
-		font-style: normal;
-		font-family: var(--play-display);
-		font-size: 1.6rem;
-	}
-
-	.choice.win {
-		border-color: var(--gold);
-	}
-
-	.role-card {
+	.theme em {
+		position: absolute;
+		top: 8px;
+		right: 10px;
+		min-width: 24px;
+		height: 24px;
 		display: grid;
-		gap: 10px;
-		padding: 28px 22px;
-		border-radius: 32px;
-		background: #fff;
-		border: 1px solid var(--line);
-		min-height: 220px;
+		place-items: center;
+		border-radius: 999px;
+		background: var(--accent);
+		color: #fff;
+		font-size: 0.78rem;
+		font-style: normal;
+		font-weight: 900;
+	}
+
+	.theme.on {
+		box-shadow: var(--press);
+	}
+
+	.theme.on strong {
+		color: var(--accent);
+	}
+
+	.role {
+		display: grid;
+		gap: 12px;
+		min-height: 240px;
 		align-content: center;
-		text-align: center;
 	}
 
-	.role-card.imposter {
-		background: #1a1012;
+	.role.imposter {
+		background: var(--ink);
 		color: #fff;
-		border-color: #1a1012;
 	}
 
-	.role-card.imposter .play-kicker,
-	.role-card.imposter .play-lead {
-		color: rgba(255, 255, 255, 0.7);
+	.reminder {
+		justify-self: center;
+		padding: 12px 22px;
+		border-radius: 999px;
+		box-shadow: var(--press-sm);
+		font-size: 1.15rem;
+		font-weight: 900;
 	}
 
-	.tiny-card {
-		text-align: center;
-		font-weight: 800;
-		padding: 12px;
-		border-radius: 16px;
-		background: #fff;
-		border: 1px solid var(--line);
-	}
-
-	.tiny-card.imposter {
-		background: #1a1012;
-		color: #fff;
-		border-color: #1a1012;
+	.reminder.imposter {
+		color: var(--danger);
 	}
 
 	.pill {
-		color: #fff;
+		padding: 8px 14px;
 		border-radius: 999px;
-		padding: 8px 12px;
-		font-size: 0.85rem;
+		color: #fff;
 		font-weight: 800;
 	}
 
-	.stage {
-		min-height: 52dvh;
+	.pair {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 10px;
 	}
 </style>

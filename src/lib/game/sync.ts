@@ -1,21 +1,16 @@
-import {
-	onDisconnect,
-	onValue,
-	ref,
-	get,
-	set,
-	update,
-	type OnDisconnect
-} from 'firebase/database';
+import type { RealtimeChannel } from '@supabase/supabase-js';
+import { shortId } from './ids';
 import { applyPatch } from './patch';
-import { ensureAnonUser, getFirebase, isFirebaseConfigured } from './firebase';
-import type { PrivateCard, RoomPatch, RoomPublic } from './types';
+import { ensureAnonUser, getSupabase, isSupabaseConfigured } from './supabase';
+import type { PrivateCard, RoomPatch, RoomPublic, Stroke } from './types';
 
-export type SyncKind = 'firebase' | 'local';
+export type SyncKind = 'supabase' | 'local';
 
 export type SyncHandlers = {
 	onPublic: (room: RoomPublic | null) => void;
 	onSecret: (card: PrivateCard | null) => void;
+	onInk: (stroke: Stroke) => void;
+	onPresence: (online: Set<string>) => void;
 };
 
 export interface SyncBackend {
@@ -25,15 +20,17 @@ export interface SyncBackend {
 	subscribe(code: string, playerId: string, handlers: SyncHandlers): () => void;
 	create(room: RoomPublic): Promise<void>;
 	updatePublic(code: string, patch: RoomPatch): Promise<void>;
+	/** Replaces every card in the room; players missing from `secrets` lose theirs. */
 	setSecrets(code: string, secrets: Record<string, PrivateCard>): Promise<void>;
-	clearSecrets(code: string): Promise<void>;
-	markDisconnect(code: string, playerId: string): void;
+	sendInk(code: string, stroke: Stroke): void;
 }
 
 type LocalStore = {
 	public: RoomPublic;
 	secrets: Record<string, PrivateCard>;
 };
+
+type LocalMessage = { code: string; ink?: Stroke };
 
 const LOCAL_PREFIX = 'kcc-imposter-room:';
 const LOCAL_ID_KEY = 'kcc-imposter-id';
@@ -42,7 +39,7 @@ const CHANNEL = 'kcc-imposter-sync';
 let localChannel: BroadcastChannel | null = null;
 
 function channel(): BroadcastChannel {
-	if (!localChannel) localChannel = new BroadcastChannel(CHANNEL);
+	localChannel ??= new BroadcastChannel(CHANNEL);
 	return localChannel;
 }
 
@@ -59,16 +56,24 @@ function loadLocal(code: string): LocalStore | null {
 
 function saveLocal(code: string, store: LocalStore) {
 	localStorage.setItem(LOCAL_PREFIX + code, JSON.stringify(store));
-	channel().postMessage({ code });
+	channel().postMessage({ code } satisfies LocalMessage);
 }
 
 function localId(): string {
-	let id = localStorage.getItem(LOCAL_ID_KEY);
+	let id = sessionStorage.getItem(LOCAL_ID_KEY);
 	if (!id) {
-		id = crypto.randomUUID();
-		localStorage.setItem(LOCAL_ID_KEY, id);
+		id = shortId();
+		sessionStorage.setItem(LOCAL_ID_KEY, id);
 	}
 	return id;
+}
+
+function setLocalConnected(code: string, playerId: string, connected: boolean) {
+	const store = loadLocal(code);
+	const player = store?.public.players[playerId];
+	if (!store || !player || player.connected === connected) return;
+	player.connected = connected;
+	saveLocal(code, store);
 }
 
 function createLocalBackend(): SyncBackend {
@@ -83,21 +88,31 @@ function createLocalBackend(): SyncBackend {
 		subscribe(code, playerId, handlers) {
 			const emit = () => {
 				const store = loadLocal(code);
-				handlers.onPublic(store?.public ?? null);
 				handlers.onSecret(store?.secrets?.[playerId] ?? null);
+				handlers.onPublic(store?.public ?? null);
 			};
-			emit();
-			const channel = new BroadcastChannel(CHANNEL);
-			channel.onmessage = (event) => {
-				if (event.data?.code === code) emit();
+			const bus = new BroadcastChannel(CHANNEL);
+			bus.onmessage = (event: MessageEvent<LocalMessage>) => {
+				if (event.data?.code !== code) return;
+				if (event.data.ink) handlers.onInk(event.data.ink);
+				else emit();
 			};
+			// Other tabs can get the BroadcastChannel ping before their copy of localStorage updates;
+			// the storage event only fires once the new value is readable.
 			const onStorage = (event: StorageEvent) => {
 				if (event.key === LOCAL_PREFIX + code) emit();
 			};
+			const onHide = () => setLocalConnected(code, playerId, false);
+			const onShow = () => setLocalConnected(code, playerId, true);
 			window.addEventListener('storage', onStorage);
+			window.addEventListener('pagehide', onHide);
+			window.addEventListener('pageshow', onShow);
+			emit();
 			return () => {
-				channel.close();
+				bus.close();
 				window.removeEventListener('storage', onStorage);
+				window.removeEventListener('pagehide', onHide);
+				window.removeEventListener('pageshow', onShow);
 			};
 		},
 		async create(room) {
@@ -115,68 +130,136 @@ function createLocalBackend(): SyncBackend {
 			store.secrets = secrets;
 			saveLocal(code, store);
 		},
-		async clearSecrets(code) {
-			const store = loadLocal(code);
-			if (!store) return;
-			store.secrets = {};
-			saveLocal(code, store);
-		},
-		markDisconnect(code, playerId) {
-			const store = loadLocal(code);
-			if (!store?.public.players[playerId]) return;
-			store.public.players[playerId]!.connected = false;
-			saveLocal(code, store);
+		sendInk(code, stroke) {
+			channel().postMessage({ code, ink: stroke } satisfies LocalMessage);
 		}
 	};
 }
 
-function createFirebaseBackend(): SyncBackend {
-	let disconnectHandle: OnDisconnect | null = null;
+type RoomRow = { state: RoomPublic; version: number };
+type SecretRow = { code: string; card: PrivateCard | null };
+
+function explain(message: string): string {
+	return /parlor_|schema cache/i.test(message)
+		? 'Supabase is missing the game tables — run supabase/parlor.sql in the SQL editor.'
+		: message;
+}
+
+function createSupabaseBackend(): SyncBackend {
+	const supabase = getSupabase();
+	const channels = new Map<string, RealtimeChannel>();
+	const removals = new Map<string, Promise<unknown>>();
+
+	async function rpc(fn: string, args: Record<string, unknown>) {
+		const { error } = await supabase.rpc(fn, args);
+		if (error) throw new Error(explain(error.message));
+	}
 
 	return {
-		kind: 'firebase',
+		kind: 'supabase',
 		ensurePlayerId: ensureAnonUser,
 		async roomExists(code) {
-			const { db } = getFirebase();
-			const snap = await get(ref(db, `rooms/${code}/public/code`));
-			return snap.exists();
+			const { data, error } = await supabase
+				.from('parlor_rooms')
+				.select('code')
+				.eq('code', code)
+				.maybeSingle();
+			if (error) throw new Error(explain(error.message));
+			return data !== null;
 		},
 		subscribe(code, playerId, handlers) {
-			const { db } = getFirebase();
-			const publicRef = ref(db, `rooms/${code}/public`);
-			const secretRef = ref(db, `rooms/${code}/secrets/${playerId}`);
-			const unsubPublic = onValue(publicRef, (snap) => {
-				handlers.onPublic((snap.val() as RoomPublic | null) ?? null);
-			});
-			const unsubSecret = onValue(secretRef, (snap) => {
-				handlers.onSecret((snap.val() as PrivateCard | null) ?? null);
-			});
+			let live: RealtimeChannel | null = null;
+			let closed = false;
+			let version = -1;
+
+			const applyRoom = (row: RoomRow | null) => {
+				if (closed) return;
+				if (!row) {
+					handlers.onPublic(null);
+					return;
+				}
+				if (row.version < version) return;
+				version = row.version;
+				handlers.onPublic(row.state);
+			};
+
+			const refresh = async () => {
+				const [room, secret] = await Promise.all([
+					supabase.from('parlor_rooms').select('state, version').eq('code', code).maybeSingle(),
+					supabase
+						.from('parlor_secrets')
+						.select('code, card')
+						.eq('code', code)
+						.eq('player_id', playerId)
+						.maybeSingle()
+				]);
+				if (closed) return;
+				if (!secret.error) handlers.onSecret((secret.data as SecretRow | null)?.card ?? null);
+				if (!room.error) applyRoom(room.data as RoomRow | null);
+			};
+
+			const open = async () => {
+				await removals.get(code);
+				// supabase.channel() hands back an existing channel for the same topic, and a joined
+				// channel rejects new listeners, so any leftover subscription must be removed first.
+				const stale = supabase.getChannels().filter((c) => c.topic === `realtime:parlor:${code}`);
+				await Promise.all(stale.map((c) => supabase.removeChannel(c)));
+				if (closed) return;
+				const chan: RealtimeChannel = supabase
+					.channel(`parlor:${code}`, { config: { presence: { key: playerId } } })
+					.on<RoomRow>(
+						'postgres_changes',
+						{ event: 'UPDATE', schema: 'public', table: 'parlor_rooms', filter: `code=eq.${code}` },
+						(payload) => applyRoom(payload.new)
+					)
+					.on<SecretRow>(
+						'postgres_changes',
+						{
+							event: '*',
+							schema: 'public',
+							table: 'parlor_secrets',
+							filter: `player_id=eq.${playerId}`
+						},
+						(payload) => {
+							if (payload.eventType === 'DELETE' || payload.new.code !== code) return;
+							handlers.onSecret(payload.new.card ?? null);
+						}
+					)
+					.on('broadcast', { event: 'ink' }, ({ payload }) => handlers.onInk(payload as Stroke))
+					.on('presence', { event: 'sync' }, () => {
+						handlers.onPresence(new Set(Object.keys(chan.presenceState())));
+					})
+					.subscribe((status) => {
+						if (status !== 'SUBSCRIBED') return;
+						void chan.track({ online: true });
+						void refresh();
+					});
+				live = chan;
+				channels.set(code, chan);
+			};
+
+			const onVisible = () => {
+				if (document.visibilityState === 'visible') void refresh();
+			};
+			document.addEventListener('visibilitychange', onVisible);
+			void open();
+			void refresh();
+
 			return () => {
-				unsubPublic();
-				unsubSecret();
+				closed = true;
+				document.removeEventListener('visibilitychange', onVisible);
+				if (!live) return;
+				if (channels.get(code) === live) channels.delete(code);
+				removals.set(code, supabase.removeChannel(live));
 			};
 		},
-		async create(room) {
-			const { db } = getFirebase();
-			await set(ref(db, `rooms/${room.code}/public`), room);
-		},
-		async updatePublic(code, patch) {
-			const { db } = getFirebase();
-			await update(ref(db, `rooms/${code}/public`), patch);
-		},
-		async setSecrets(code, secrets) {
-			const { db } = getFirebase();
-			await set(ref(db, `rooms/${code}/secrets`), secrets);
-		},
-		async clearSecrets(code) {
-			const { db } = getFirebase();
-			await set(ref(db, `rooms/${code}/secrets`), null);
-		},
-		markDisconnect(code, playerId) {
-			const { db } = getFirebase();
-			void disconnectHandle?.cancel();
-			disconnectHandle = onDisconnect(ref(db, `rooms/${code}/public/players/${playerId}/connected`));
-			void disconnectHandle.set(false);
+		create: (room) => rpc('parlor_create', { p_code: room.code, p_state: room }),
+		updatePublic: (code, patch) => rpc('parlor_patch', { p_code: code, p_patch: patch }),
+		setSecrets: (code, secrets) => rpc('parlor_set_secrets', { p_code: code, p_cards: secrets }),
+		sendInk(code, stroke) {
+			const chan = channels.get(code);
+			if (chan?.state !== 'joined') return;
+			void chan.send({ type: 'broadcast', event: 'ink', payload: stroke });
 		}
 	};
 }
@@ -184,11 +267,10 @@ function createFirebaseBackend(): SyncBackend {
 let backend: SyncBackend | null = null;
 
 export function getBackend(): SyncBackend {
-	if (backend) return backend;
-	backend = isFirebaseConfigured() ? createFirebaseBackend() : createLocalBackend();
+	backend ??= isSupabaseConfigured() ? createSupabaseBackend() : createLocalBackend();
 	return backend;
 }
 
 export function syncKind(): SyncKind {
-	return isFirebaseConfigured() ? 'firebase' : 'local';
+	return isSupabaseConfigured() ? 'supabase' : 'local';
 }

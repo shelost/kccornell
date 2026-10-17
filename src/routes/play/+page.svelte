@@ -1,126 +1,129 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import NameStep from '$lib/game/components/NameStep.svelte';
 	import { getSession } from '$lib/game/session.svelte';
 	import { normalizeCode } from '$lib/game/ids';
-	import { rise, lettersIn } from '$lib/game/motion';
-	import { MAX_PLAYERS } from '$lib/game/types';
+	import { rise } from '$lib/game/motion';
+	import { CODE_LENGTH } from '$lib/game/types';
 
 	const game = getSession();
 	let name = $state(game.rememberedName());
 	let code = $state('');
+	let step = $state<'name' | 'room'>('name');
 
-	const canGo = $derived(name.trim().length >= 2);
+	const codeReady = $derived(normalizeCode(code).length === CODE_LENGTH);
 
 	async function create() {
-		if (!canGo || game.busy) return;
+		if (game.busy) return;
 		try {
-			const room = await game.create(name.trim());
+			const room = await game.create(name);
 			await goto(resolve('/play/[code]', { code: room }));
 		} catch {
 			/* error is shown from session */
 		}
 	}
 
-	async function join() {
-		if (!canGo || game.busy) return;
-		const clean = normalizeCode(code);
-		if (clean.length < 4) {
-			game.error = 'Enter the 4-character code';
-			return;
-		}
-		await game.join(clean, name.trim());
+	async function join(event: SubmitEvent) {
+		event.preventDefault();
+		if (!codeReady || game.busy) return;
+		await game.join(normalizeCode(code), name);
 		if (game.room) await goto(resolve('/play/[code]', { code: game.room.code }));
 	}
 </script>
 
 <div class="home">
-	<p class="play-kicker" {@attach rise()}>KCC parlor game</p>
-	<h1 class="play-title" {@attach lettersIn()}>
-		{#each 'Imposter'.split('') as ch, i (i)}
-			<span class="letter">{ch}</span>
-		{/each}
-	</h1>
-	<p class="play-lead" {@attach rise(0.15)}>
-		One of you doesn’t know the word. Talk, bluff, vote. The game master runs the clock.
-	</p>
+	{#if step === 'name'}
+		<NameStep
+			bind:value={name}
+			cta="Continue"
+			onSubmit={() => {
+				game.saveName(name);
+				step = 'room';
+			}}
+		/>
+	{:else}
+		<div class="stage" {@attach rise()}>
+			<h1 class="title">
+				Welcome, {name.trim()}!
+				<button class="edit" type="button" onclick={() => (step = 'name')}>edit</button>
+			</h1>
+			<form class="stack" onsubmit={join}>
+				<input
+					class="field code"
+					bind:value={code}
+					maxlength={CODE_LENGTH}
+					placeholder="CODE"
+					aria-label="Room code"
+					autocapitalize="characters"
+					autocomplete="off"
+					enterkeyhint="go"
+					oninput={() => (code = normalizeCode(code))}
+				/>
+				<button class="btn accent" type="submit" disabled={!codeReady || game.busy}>Join</button>
+			</form>
+		</div>
+	{/if}
 
-	<form class="play-card stack" onsubmit={(e) => e.preventDefault()}>
-		<label>
-			<span>Your name</span>
-			<input class="play-input" bind:value={name} maxlength="18" placeholder="e.g. Heewon" />
-		</label>
-		<button class="play-btn accent" type="button" disabled={!canGo || game.busy} onclick={create}>
-			Create a room
-		</button>
-		<div class="or">or join</div>
-		<label>
-			<span>Room code</span>
-			<input
-				class="play-input code-in"
-				bind:value={code}
-				maxlength="4"
-				placeholder="XXXX"
-				autocapitalize="characters"
-				oninput={() => (code = normalizeCode(code))}
-			/>
-		</label>
-		<button class="play-btn primary" type="button" disabled={!canGo || game.busy} onclick={join}>
-			Join
-		</button>
-		{#if game.error}
-			<p class="warn">{game.error}</p>
-		{/if}
-	</form>
-
-	<p class="note">
-		{game.kind === 'firebase'
-			? `Live across phones · up to ${MAX_PLAYERS} players.`
-			: `Same-device mode until Firebase keys are added. Open extra tabs to try it. Up to ${MAX_PLAYERS} players.`}
-	</p>
-	<p class="note"><a href={resolve('/')}>Back to KCC</a></p>
+	{#if game.error}
+		<p class="warn">{game.error}</p>
+	{/if}
+	{#if game.kind === 'local'}
+		<p class="muted note">
+			Same-device mode — rooms only sync between tabs of this browser until Supabase is connected.
+		</p>
+	{/if}
+	{#if step === 'room'}
+		<button class="create" type="button" disabled={game.busy} onclick={create}>Create a room</button>
+	{/if}
 </div>
 
 <style>
 	.home {
-		display: grid;
-		gap: 16px;
-		padding-top: 12px;
+		min-height: calc(100dvh - 48px);
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 18px;
 	}
 
-	.letter {
-		display: inline-block;
+	.stage {
+		flex: 1;
+		display: grid;
+		align-content: center;
+		gap: 28px;
 	}
 
-	.stack {
-		display: grid;
-		gap: 12px;
-	}
-
-	label {
-		display: grid;
-		gap: 6px;
-		font-size: 0.78rem;
-		font-weight: 800;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
+	.edit {
+		display: block;
+		margin: 10px auto 0;
 		color: var(--muted);
+		font-size: 0.85rem;
+		font-weight: 700;
+		letter-spacing: 0;
 	}
 
-	.or {
-		text-align: center;
-		font-size: 0.78rem;
-		font-weight: 800;
-		letter-spacing: 0.14em;
+	.code {
+		min-height: 92px;
+		font-size: clamp(2.4rem, 12vw, 3.2rem);
+		letter-spacing: 0.42em;
 		text-transform: uppercase;
+	}
+
+	.note {
+		font-size: 0.82rem;
+	}
+
+	.create {
+		align-self: center;
+		margin-top: auto;
+		padding: 8px;
 		color: var(--muted);
+		font-size: 0.82rem;
+		font-weight: 700;
 	}
 
-	.code-in {
-		letter-spacing: 0.28em;
-		text-transform: uppercase;
-		text-align: center;
-		font-family: var(--play-display);
-		font-size: 1.4rem;
+	.create:disabled {
+		opacity: 0.5;
 	}
 </style>

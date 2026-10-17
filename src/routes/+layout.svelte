@@ -47,5 +47,8 @@
 
 	main.is-play {
 		padding-top: 0;
+		height: 100dvh;
+		max-height: 100dvh;
+		overflow: hidden;
 	}
 </style>

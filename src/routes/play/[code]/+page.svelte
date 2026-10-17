@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import GameBoard from '$lib/game/components/GameBoard.svelte';
+	import NameStep from '$lib/game/components/NameStep.svelte';
 	import { getSession } from '$lib/game/session.svelte';
 	import { normalizeCode } from '$lib/game/ids';
 	import { rise } from '$lib/game/motion';
@@ -10,58 +10,53 @@
 	let { params }: { params: { code: string } } = $props();
 	const game = getSession();
 	let name = $state(game.rememberedName());
-	let joining = $state(false);
+	let status = $state<'checking' | 'joined' | 'join' | 'missing' | 'error'>('checking');
+	let problem = $state('');
 
 	const code = $derived(normalizeCode(params.code));
-	const inRoom = $derived(game.room?.code === code);
-
-	async function enter() {
-		if (name.trim().length < 2 || game.busy) return;
-		joining = true;
-		await game.join(code, name.trim());
-		joining = false;
-		if (!game.room) return;
-	}
+	const inRoom = $derived(game.room?.code === code && Boolean(game.me));
 
 	onMount(() => {
-		if (inRoom) return;
-		const remembered = game.rememberedName();
-		if (remembered) {
-			name = remembered;
-			void game.join(code, remembered);
+		if (inRoom) {
+			status = 'join';
+			return;
 		}
+		void game.resume(code).then((result) => {
+			problem = game.error;
+			status = result;
+		});
 	});
 </script>
 
 {#if inRoom}
 	<GameBoard />
+{:else if status === 'checking' || status === 'joined'}
+	<p class="muted gate">Finding room {code}…</p>
+{:else if status === 'join'}
+	<div class="gate">
+		<p class="label">Room {code}</p>
+		<NameStep bind:value={name} cta="Join" busy={game.busy} onSubmit={() => game.join(code, name)} />
+		{#if game.error}
+			<p class="warn">{game.error}</p>
+		{/if}
+		<a class="muted" href={resolve('/play')}>Back</a>
+	</div>
 {:else}
 	<div class="gate" {@attach rise()}>
-		<p class="play-kicker">Join {code || 'room'}</p>
-		<h1 class="play-title">What’s your name?</h1>
-		<form
-			class="play-card stack"
-			onsubmit={(e) => {
-				e.preventDefault();
-				void enter();
-			}}
-		>
-			<input class="play-input" bind:value={name} maxlength="18" placeholder="Your name" />
-			<button class="play-btn accent" type="submit" disabled={name.trim().length < 2 || game.busy}>
-				{joining || game.busy ? 'Joining…' : 'Sit down'}
-			</button>
-			{#if game.error}
-				<p class="warn">{game.error}</p>
-			{/if}
-		</form>
-		<button class="play-btn ghost" type="button" onclick={() => goto(resolve('/play'))}>Back</button>
+		<p class="label">Room {code}</p>
+		<h1 class="title">{status === 'missing' ? 'Room not found' : 'Can’t connect'}</h1>
+		<p class="muted">
+			{status === 'missing' ? 'It may have ended, or the code is off by a letter.' : problem}
+		</p>
+		<a class="btn accent" href={resolve('/play')}>Enter a code</a>
 	</div>
 {/if}
 
 <style>
-	.gate,
-	.stack {
+	.gate {
+		min-height: calc(100dvh - 48px);
 		display: grid;
-		gap: 14px;
+		align-content: center;
+		gap: 20px;
 	}
 </style>

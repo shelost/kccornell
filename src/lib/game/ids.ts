@@ -17,6 +17,10 @@ export function normalizeCode(raw: string): string {
 		.slice(0, CODE_LENGTH);
 }
 
+export function shortId(): string {
+	return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export function shuffle<T>(items: T[]): T[] {
 	const copy = [...items];
 	for (let i = copy.length - 1; i > 0; i--) {
