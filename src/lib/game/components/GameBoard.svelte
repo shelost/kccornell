@@ -3,8 +3,10 @@
 	import Alerts from './Alerts.svelte';
 	import CountdownBar from './CountdownBar.svelte';
 	import ModePicker from './ModePicker.svelte';
+	import KrillionBoard from './KrillionBoard.svelte';
 	import PlayerGrid from './PlayerGrid.svelte';
 	import SketchBoard from './SketchBoard.svelte';
+	import TeamsPanel from './TeamsPanel.svelte';
 	import { getSession } from '$lib/game/session.svelte';
 	import { THEMES, getTheme } from '$lib/game/themes';
 	import { PLAYER_COLORS } from '$lib/game/ids';
@@ -38,6 +40,19 @@
 		[2, '2 rounds'],
 		[3, '3 rounds']
 	];
+	const HEART_OPTIONS: Options = [
+		[2, '2'],
+		[3, '3'],
+		[4, '4'],
+		[5, '5']
+	];
+	const PUFFER_OPTIONS: Options = [
+		[8, '8 sec'],
+		[10, '10 sec'],
+		[12, '12 sec'],
+		[15, '15 sec'],
+		[20, '20 sec']
+	];
 
 	function withCurrent(options: Options, value: number): Options {
 		if (options.some(([option]) => option === value)) return options;
@@ -62,12 +77,21 @@
 	const lastTurn = $derived(
 		Boolean(game.sketch && game.sketch.turnIndex + 1 >= game.sketch.order.length)
 	);
-	const fill = $derived(game.phase === 'sketch' || game.phase === 'sketch-reveal');
+	const fill = $derived(
+		game.phase === 'sketch' || game.phase === 'sketch-reveal' || game.phase === 'krillion'
+	);
 	const subtitle = $derived.by(() => {
+		if (game.phase === 'krillion' && game.krillion) {
+			const floating = game.players.filter((player) => (game.krillion?.lives[player.id] ?? 0) > 0)
+				.length;
+			return `${game.theme?.label ?? 'Krillion'} · ${floating} floating`;
+		}
 		const sketch = game.sketch;
-		if (!fill || !sketch?.order.length) return '';
-		const turn = Math.min(sketch.turnIndex + 1, sketch.order.length);
-		return `${game.theme?.label ?? 'Sketch'} · ${turn}/${sketch.order.length}`;
+		if ((game.phase === 'sketch' || game.phase === 'sketch-reveal') && sketch?.order.length) {
+			const turn = Math.min(sketch.turnIndex + 1, sketch.order.length);
+			return `${game.theme?.label ?? 'Sketch'} · ${turn}/${sketch.order.length}`;
+		}
+		return '';
 	});
 	const timer = $derived.by(() => {
 		const room = game.room;
@@ -83,6 +107,13 @@
 				endsAt: room.sketch?.turnEndsAt ?? null,
 				pausedMs: null,
 				totalMs: room.settings.drawSeconds * 1000
+			};
+		}
+		if (room?.phase === 'krillion') {
+			return {
+				endsAt: room.krillion?.turnEndsAt ?? null,
+				pausedMs: null,
+				totalMs: room.krillion?.turnMs ?? room.settings.krillionSeconds * 1000
 			};
 		}
 		return null;
@@ -140,6 +171,21 @@
 	{/if}
 {/snippet}
 
+{#snippet krillionSettings()}
+	{@render setting(
+		'Hearts',
+		game.room?.settings.krillionHearts ?? 3,
+		HEART_OPTIONS,
+		(n) => game.setSetting('krillionHearts', n)
+	)}
+	{@render setting(
+		'Turn time',
+		game.room?.settings.krillionSeconds ?? 12,
+		withCurrent(PUFFER_OPTIONS, game.room?.settings.krillionSeconds ?? 12),
+		(n) => game.setKrillionSeconds(n)
+	)}
+{/snippet}
+
 {#snippet liveSketchSettings()}
 	<details class="settings live">
 		<summary class="btn small">Settings</summary>
@@ -149,12 +195,27 @@
 	</details>
 {/snippet}
 
+{#snippet liveKrillionSettings()}
+	<details class="settings live">
+		<summary class="btn small">Settings</summary>
+		<div class="stack panel">
+			{@render krillionSettings()}
+		</div>
+	</details>
+{/snippet}
+
 {#snippet hostMenu()}
 	<details class="host-menu">
 		<summary class="pill-btn">Host</summary>
 		<div class="menu stack">
-			{@render sketchSettings(false)}
-			<button class="btn small" type="button" onclick={() => game.endSketchTurn()}>End turn</button>
+			{#if game.phase === 'krillion'}
+				{@render krillionSettings()}
+				<button class="btn small" type="button" onclick={() => game.passKrillion()}>Pass</button>
+				<button class="btn small danger" type="button" onclick={() => game.popKrillion()}>Pop</button>
+			{:else}
+				{@render sketchSettings(false)}
+				<button class="btn small" type="button" onclick={() => game.endSketchTurn()}>End turn</button>
+			{/if}
 		</div>
 	</details>
 {/snippet}
@@ -166,13 +227,18 @@
 	{/if}
 
 	<header class="top">
-		<a href={resolve('/play')} class="leave" onclick={() => void game.leave()}>Leave</a>
-		{#if subtitle}
-			<span class="subtitle">{subtitle}</span>
-		{:else}
-			<strong class="room">{game.code}</strong>
-		{/if}
-		{#if game.isHost && game.phase === 'sketch'}
+		<a href={resolve('/play')} class="leave" onclick={() => void game.leave()}>Exit</a>
+		<div class="brand">
+			{#if subtitle}
+				<span class="subtitle">{subtitle}</span>
+			{:else}
+				<strong class="room">{game.code}</strong>
+			{/if}
+			{#if game.room.teams?.status === 'ready' && game.room.teams.assignments[game.playerId]}
+				<span class="team-chip">Team {game.room.teams.assignments[game.playerId]}</span>
+			{/if}
+		</div>
+		{#if game.isHost && (game.phase === 'sketch' || game.phase === 'krillion')}
 			{@render hostMenu()}
 		{:else}
 			<span class="count">{game.playerCount}/{MAX_PLAYERS}</span>
@@ -180,6 +246,17 @@
 	</header>
 
 	<Alerts items={game.alerts} />
+
+	{#if game.phase !== 'lobby' && game.room.teams?.status === 'ready' && game.room.teams.assignments[game.playerId]}
+		{@const team = game.room.teams.assignments[game.playerId]}
+		<p class="team-line">
+			Team {team} ·
+			{game.players
+				.filter((player) => game.room?.teams?.assignments[player.id] === team)
+				.map((player) => (player.id === game.playerId ? 'You' : player.name))
+				.join(', ')}
+		</p>
+	{/if}
 
 	{#if game.error}
 		<p class="warn">{game.error}</p>
@@ -196,6 +273,11 @@
 					<button class="btn small share" type="button" onclick={share}>Share invite link</button>
 
 					<PlayerGrid players={game.players} hostId={game.room.hostId} meId={game.playerId} />
+
+					{#if game.isHost && !game.room.teams}
+						<button class="btn" type="button" onclick={() => game.announceTeams()}>Create teams</button>
+					{/if}
+					<TeamsPanel />
 
 					{#if game.isHost}
 						<ModePicker value={game.mode} onPick={(mode) => game.setMode(mode)} />
@@ -222,8 +304,10 @@
 									{@render setting('Discussion', game.room.settings.discussSeconds, DISCUSS_OPTIONS, (n) =>
 										game.setSetting('discussSeconds', n)
 									)}
-								{:else}
+								{:else if game.mode === 'sketch'}
 									{@render sketchSettings(true)}
+								{:else}
+									{@render krillionSettings()}
 								{/if}
 							</div>
 						</details>
@@ -328,11 +412,13 @@
 				</section>
 			{:else if game.phase.startsWith('sketch')}
 				<SketchBoard />
+			{:else if game.phase.startsWith('krillion')}
+				<KrillionBoard />
 			{/if}
 		</main>
 	{/key}
 
-	{#if game.isHost && game.phase !== 'sketch'}
+	{#if game.isHost && game.phase !== 'sketch' && game.phase !== 'krillion'}
 		<div class="dock">
 			{#if game.phase === 'lobby'}
 				<button
@@ -346,6 +432,8 @@
 			{:else if game.phase === 'poll'}
 				{#if game.mode === 'sketch'}
 					{@render liveSketchSettings()}
+				{:else if game.mode === 'krillion'}
+					{@render liveKrillionSettings()}
 				{/if}
 				<button class="btn accent" type="button" onclick={() => game.deal()}>
 					{choice ? `Start with ${choice.label}` : 'Start game'}
@@ -366,7 +454,7 @@
 				<button class="btn accent" type="button" onclick={() => game.openVote()}>Vote now</button>
 			{:else if game.phase === 'vote'}
 				<button class="btn danger" type="button" onclick={() => game.reveal()}>Reveal</button>
-			{:else if game.phase === 'result' || game.phase === 'sketch-final'}
+			{:else if game.phase === 'result' || game.phase === 'sketch-final' || game.phase === 'krillion-final'}
 				<button class="btn accent" type="button" onclick={() => game.nextRound()}>Play again</button>
 			{:else if game.phase === 'sketch-reveal'}
 				{@render liveSketchSettings()}
@@ -409,6 +497,27 @@
 		font-size: 0.85rem;
 		font-weight: 800;
 		color: var(--muted);
+	}
+
+	.brand {
+		display: grid;
+		justify-items: center;
+		gap: 2px;
+	}
+
+	.team-line {
+		margin: 0 0 10px;
+		font-size: 0.85rem;
+		font-weight: 800;
+	}
+
+	.team-chip {
+		padding: 2px 8px;
+		border: 1.5px solid var(--line);
+		border-radius: 999px;
+		background: #fff;
+		font-size: 0.72rem;
+		font-weight: 800;
 	}
 
 	.leave {
@@ -454,8 +563,9 @@
 
 	.pill-btn {
 		padding: 6px 14px;
+		border: 1.5px solid var(--line);
 		border-radius: 999px;
-		box-shadow: var(--raise-sm);
+		background: #fff;
 		font-size: 0.85rem;
 		font-weight: 800;
 	}
@@ -472,9 +582,10 @@
 		z-index: 30;
 		width: min(280px, 80vw);
 		padding: 16px;
+		border: 1.5px solid var(--line);
 		border-radius: 22px;
-		background: var(--bg);
-		box-shadow: var(--raise);
+		background: #fff;
+		box-shadow: var(--raise-sm);
 	}
 
 	.stage {
@@ -546,8 +657,9 @@
 		width: 100%;
 		margin-top: 16px;
 		padding: 18px;
+		border: 1.5px solid var(--line);
 		border-radius: 24px;
-		box-shadow: var(--press);
+		background: #fff;
 	}
 
 	.set {
@@ -560,10 +672,9 @@
 
 	.set select {
 		padding: 10px 14px;
-		border: none;
+		border: 1.5px solid var(--line);
 		border-radius: 14px;
-		background: var(--bg);
-		box-shadow: var(--raise-sm);
+		background: #fff;
 		color: var(--ink);
 		font: inherit;
 		font-weight: 800;
@@ -572,8 +683,9 @@
 	.game-tag {
 		justify-self: center;
 		padding: 10px 20px;
+		border: 1.5px solid var(--line);
 		border-radius: 999px;
-		box-shadow: var(--press-sm);
+		background: #fff;
 		color: var(--accent);
 		font-weight: 900;
 	}
@@ -607,8 +719,9 @@
 		display: grid;
 		gap: 2px;
 		padding: 16px 10px;
+		border: 1.5px solid var(--line);
 		border-radius: 22px;
-		box-shadow: var(--raise-sm);
+		background: #fff;
 		transition: box-shadow 0.15s ease;
 	}
 
@@ -691,8 +804,9 @@
 	.reminder {
 		justify-self: center;
 		padding: 12px 22px;
+		border: 1.5px solid var(--line);
 		border-radius: 999px;
-		box-shadow: var(--press-sm);
+		background: #fff;
 		font-size: 1.15rem;
 		font-weight: 900;
 	}

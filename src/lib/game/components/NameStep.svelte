@@ -9,6 +9,7 @@
 	}: { value?: string; cta: string; busy?: boolean; onSubmit: () => void } = $props();
 
 	const ready = $derived(value.trim().length >= 2);
+	const enter = rise();
 </script>
 
 <form
@@ -17,16 +18,21 @@
 		event.preventDefault();
 		if (ready && !busy) onSubmit();
 	}}
-	{@attach rise()}
+	{@attach enter}
 >
 	<h1 class="title">What’s your name?</h1>
 	<input
 		class="field"
 		bind:value
-		maxlength="18"
+		name="nickname"
+		maxlength="32"
 		placeholder="Your name"
 		autocomplete="nickname"
+		autocapitalize="words"
+		autocorrect="off"
+		spellcheck="false"
 		enterkeyhint="go"
+		inputmode="text"
 	/>
 	<button class="btn accent" type="submit" disabled={!ready || busy}>
 		{busy ? 'One sec…' : cta}

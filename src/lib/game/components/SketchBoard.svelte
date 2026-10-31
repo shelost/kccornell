@@ -2,7 +2,6 @@
 	import DrawCanvas from './DrawCanvas.svelte';
 	import PlayerStrip from './PlayerStrip.svelte';
 	import Scoreboard from './Scoreboard.svelte';
-	import { manualKeyboard } from '$lib/game/keyboard';
 	import { getSession } from '$lib/game/session.svelte';
 	import { PLAYER_COLORS } from '$lib/game/ids';
 	import { pop, rise } from '$lib/game/motion';
@@ -119,13 +118,13 @@
 					maxlength="40"
 					placeholder={solved ? 'Nice! Hang tight' : 'Your guess'}
 					disabled={solved}
+					name="guess"
 					autocomplete="off"
 					autocapitalize="off"
 					autocorrect="off"
 					spellcheck="false"
 					enterkeyhint="send"
 					inputmode="text"
-					{@attach manualKeyboard()}
 				/>
 				<button class="btn accent small" type="submit" disabled={solved || !guess.trim()}>Go</button>
 			</form>

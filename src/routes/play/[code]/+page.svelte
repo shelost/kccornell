@@ -3,6 +3,8 @@
 	import { onMount } from 'svelte';
 	import GameBoard from '$lib/game/components/GameBoard.svelte';
 	import NameStep from '$lib/game/components/NameStep.svelte';
+	import WelcomeBack from '$lib/game/components/WelcomeBack.svelte';
+	import { matchProfile } from '$lib/game/profiles';
 	import { getSession } from '$lib/game/session.svelte';
 	import { normalizeCode } from '$lib/game/ids';
 	import { rise } from '$lib/game/motion';
@@ -12,6 +14,8 @@
 	let name = $state(game.rememberedName());
 	let status = $state<'checking' | 'joined' | 'join' | 'missing' | 'error'>('checking');
 	let problem = $state('');
+	let greeting = $state(false);
+	const profile = $derived(matchProfile(name));
 
 	const code = $derived(normalizeCode(params.code));
 	const inRoom = $derived(game.room?.code === code && Boolean(game.me));
@@ -34,12 +38,28 @@
 	<p class="muted gate">Finding room {code}…</p>
 {:else if status === 'join'}
 	<div class="gate">
-		<p class="label">Room {code}</p>
-		<NameStep bind:value={name} cta="Join" busy={game.busy} onSubmit={() => game.join(code, name)} />
-		{#if game.error}
-			<p class="warn">{game.error}</p>
+		{#if greeting && profile}
+			<WelcomeBack
+				{profile}
+				cta={game.busy ? 'One sec…' : 'Join'}
+				onContinue={() => game.join(code, name)}
+			/>
+		{:else}
+			<p class="label">Room {code}</p>
+			<NameStep
+				bind:value={name}
+				cta="Join"
+				busy={game.busy}
+				onSubmit={() => {
+					if (profile) greeting = true;
+					else void game.join(code, name);
+				}}
+			/>
+			{#if game.error}
+				<p class="warn">{game.error}</p>
+			{/if}
+			<a class="muted" href={resolve('/play')}>Back</a>
 		{/if}
-		<a class="muted" href={resolve('/play')}>Back</a>
 	</div>
 {:else}
 	<div class="gate" {@attach rise()}>

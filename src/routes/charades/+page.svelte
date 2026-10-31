@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { onMount } from 'svelte';
 	import CountdownBar from '$lib/game/components/CountdownBar.svelte';
 	import { hintFor } from '$lib/game/hints';
 	import { shuffle } from '$lib/game/ids';
 	import { flipCard, pop, rise } from '$lib/game/motion';
-	import { THEMES, type Theme } from '$lib/game/themes';
+	import { THEMES, themeLook, type Theme } from '$lib/game/themes';
 
 	const TIMES = [
 		{ ms: 30_000, label: '0:30' },
@@ -21,6 +22,7 @@
 	let pausedMs = $state<number | null>(null);
 	let phase = $state<'pick' | 'play' | 'done'>('pick');
 	let got = $state<string[]>([]);
+	let catalog = $state.raw<Theme[]>(THEMES);
 
 	const word = $derived(deck[index] ?? '');
 	const hint = $derived(hintFor(word));
@@ -81,7 +83,12 @@
 		phase = 'pick';
 		endsAt = null;
 		pausedMs = null;
+		catalog = shuffle(THEMES);
 	}
+
+	onMount(() => {
+		catalog = shuffle(THEMES);
+	});
 
 	$effect(() => {
 		if (phase !== 'play' || endsAt == null) return;
@@ -92,27 +99,31 @@
 </script>
 
 <div class="shell">
+	<a class="exit-game" href={resolve('/play')}>Exit</a>
 	{#if phase === 'pick' || !theme}
 		<section class="pick" {@attach rise()}>
-			<a class="back" href={resolve('/play')}>Play</a>
-			<h1 class="title">Charades</h1>
-			<p class="muted">Pick a time, then a theme. Act it out. Don’t say the word.</p>
-			<div class="times" role="group" aria-label="Round length">
-				{#each TIMES as option (option.ms)}
-					<button
-						class="chip"
-						class:on={durationMs === option.ms}
-						type="button"
-						aria-pressed={durationMs === option.ms}
-						onclick={() => (durationMs = option.ms)}
-					>
-						{option.label}
-					</button>
-				{/each}
+			<div class="mast">
+				<h1 class="title">Charades</h1>
+				<p class="muted">Pick a time, then a theme. Act it out. Don’t say the word.</p>
+				<div class="times" role="group" aria-label="Round length">
+					{#each TIMES as option (option.ms)}
+						<button
+							class="chip"
+							class:on={durationMs === option.ms}
+							type="button"
+							aria-pressed={durationMs === option.ms}
+							onclick={() => (durationMs = option.ms)}
+						>
+							{option.label}
+						</button>
+					{/each}
+				</div>
 			</div>
 			<div class="themes">
-				{#each THEMES as item (item.id)}
+				{#each catalog as item (item.id)}
+					{@const look = themeLook(item.id)}
 					<button class="theme" type="button" onclick={() => start(item)}>
+						<span class="glyph" style:background={look.tint} aria-hidden="true">{look.icon}</span>
 						<strong>{item.label}</strong>
 						<span>{item.korean}</span>
 					</button>
@@ -187,24 +198,54 @@
 		min-height: 0;
 		display: flex;
 		flex-direction: column;
-		overflow: hidden;
 	}
 
-	.pick,
-	.done {
-		gap: 16px;
+	.pick {
+		overflow-x: hidden;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		scrollbar-width: none;
+		-webkit-overflow-scrolling: touch;
 		text-align: center;
 	}
 
-	.back,
+	.pick::-webkit-scrollbar {
+		display: none;
+	}
+
+	.table {
+		overflow: hidden;
+	}
+
+	.done {
+		gap: 16px;
+		overflow-x: hidden;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		scrollbar-width: none;
+		text-align: center;
+		padding-bottom: 8px;
+	}
+
+	.done::-webkit-scrollbar {
+		display: none;
+	}
+
+	.mast {
+		position: sticky;
+		top: 0;
+		z-index: 2;
+		display: grid;
+		gap: 12px;
+		padding-top: 18px;
+		padding-bottom: 14px;
+		background: var(--bg);
+	}
+
 	.ghost {
 		color: var(--muted);
 		font-size: 0.85rem;
 		font-weight: 800;
-	}
-
-	.back {
-		align-self: start;
 	}
 
 	.times {
@@ -214,32 +255,42 @@
 	}
 
 	.themes {
-		flex: 1;
-		min-height: 0;
-		overflow: auto;
-		overscroll-behavior: contain;
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		align-content: start;
-		gap: 12px;
-		padding-bottom: 8px;
+		gap: 10px;
+		padding-bottom: calc(32px + env(safe-area-inset-bottom));
 	}
 
 	.theme {
 		display: grid;
-		gap: 2px;
-		padding: 18px 10px;
+		justify-items: center;
+		gap: 4px;
+		min-height: 118px;
+		padding: 14px 10px 12px;
+		border: 1.5px solid var(--line);
 		border-radius: 22px;
-		box-shadow: var(--raise-sm);
+		background: #fff;
+	}
+
+	.glyph {
+		display: grid;
+		place-items: center;
+		width: 46px;
+		height: 46px;
+		border-radius: 16px;
+		font-size: 1.45rem;
+		line-height: 1;
 	}
 
 	.theme strong {
-		font-size: 0.98rem;
+		font-size: 0.92rem;
 		font-weight: 800;
+		line-height: 1.15;
 	}
 
-	.theme span {
-		font-size: 0.78rem;
+	.theme span:not(.glyph) {
+		font-size: 0.74rem;
 		color: var(--muted);
 		font-weight: 700;
 	}
@@ -331,10 +382,16 @@
 
 	.got li {
 		padding: 8px 12px;
+		border: 1.5px solid var(--line);
 		border-radius: 999px;
-		box-shadow: var(--raise-sm);
+		background: #fff;
 		font-weight: 800;
 		font-size: 0.9rem;
+	}
+
+	.done .btn,
+	.done .again {
+		flex-shrink: 0;
 	}
 
 	.empty {

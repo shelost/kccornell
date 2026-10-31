@@ -9,8 +9,12 @@
 
 	let { children } = $props();
 	const isPlay = $derived(
-		page.url.pathname.startsWith('/play') || page.url.pathname.startsWith('/charades')
+		page.url.pathname.startsWith('/play') ||
+			page.url.pathname.startsWith('/charades') ||
+			page.url.pathname.startsWith('/test') ||
+			page.url.pathname.startsWith('/create')
 	);
+	const isTest = $derived(page.url.pathname.startsWith('/test'));
 
 	onNavigate((navigation) => {
 		if (!document.startViewTransition) return;
@@ -33,7 +37,7 @@
 	<Nav />
 {/if}
 
-<main class:is-play={isPlay}>
+<main class:is-play={isPlay} class:is-test={isTest}>
 	{@render children()}
 </main>
 
@@ -52,5 +56,12 @@
 		height: 100dvh;
 		max-height: 100dvh;
 		overflow: hidden;
+	}
+
+	main.is-play.is-test {
+		height: auto;
+		min-height: 100dvh;
+		max-height: none;
+		overflow: auto;
 	}
 </style>

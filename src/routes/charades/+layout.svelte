@@ -6,7 +6,7 @@
 
 <svelte:head>
 	<title>Charades · KCC</title>
-	<meta name="theme-color" content="#e7ebf2" />
+	<meta name="theme-color" content="#000000" />
 	<link
 		href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800;900&display=swap"
 		rel="stylesheet"

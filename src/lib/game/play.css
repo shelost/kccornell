@@ -6,14 +6,29 @@ html:has(.play-root) body {
 	max-width: 100dvw;
 	max-height: 100dvh;
 	overscroll-behavior: none;
+	background: #f4efe4;
+}
+
+html:has(.play-root.scrollable),
+html:has(.play-root.scrollable) body {
+	overflow: auto;
+	height: auto;
+	max-height: none;
+}
+
+html:has(.play-root) {
+	background: #000;
 }
 
 .play-root {
-	--bg: #e7ebf2;
-	--sd: #c3c9d6;
-	--sl: #ffffff;
-	--ink: #1c2130;
-	--muted: #8a92a4;
+	position: relative;
+	--bg: #0c0b10;
+	--surface: #18171e;
+	--line: #2e2c36;
+	--sd: #050508;
+	--sl: #24232c;
+	--ink: #f3efe6;
+	--muted: #8d8796;
 	--accent: #6a4cf5;
 	--accent-2: #9b7dff;
 	--danger: #ee4b6a;
@@ -39,8 +54,16 @@ html:has(.play-root) body {
 	text-align: center;
 	-webkit-font-smoothing: antialiased;
 	-webkit-tap-highlight-color: transparent;
+	color-scheme: dark;
 	--kb-inset: 0px;
 	--kb-pad: calc(8px + env(safe-area-inset-bottom));
+}
+
+.play-root.scrollable {
+	overflow-y: auto;
+	height: auto;
+	min-height: 100dvh;
+	max-height: none;
 }
 
 .play-root.kb-open {
@@ -55,6 +78,12 @@ html:has(.play-root) body {
 	flex-direction: column;
 	min-height: 0;
 	overflow: hidden;
+}
+
+.play-root.scrollable .play-frame {
+	height: auto;
+	min-height: calc(100dvh - 36px);
+	overflow: visible;
 }
 
 @media (max-width: 520px) {
@@ -117,16 +146,17 @@ html:has(.play-root) body {
 }
 
 .neu {
-	background: var(--bg);
+	background: var(--surface);
+	border: 1.5px solid var(--line);
 	border-radius: 28px;
-	box-shadow: var(--raise);
+	box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
 	padding: 22px;
 }
 
 .neu-in {
-	background: var(--bg);
+	background: var(--surface);
+	border: 1.5px solid var(--line);
 	border-radius: 24px;
-	box-shadow: var(--press);
 }
 
 .btn {
@@ -137,8 +167,9 @@ html:has(.play-root) body {
 	width: 100%;
 	min-height: 58px;
 	padding: 0 22px;
+	border: 1.5px solid var(--line);
 	border-radius: 20px;
-	background: var(--bg);
+	background: var(--surface);
 	color: var(--ink);
 	font-size: 1.05rem;
 	font-weight: 800;
@@ -156,6 +187,7 @@ html:has(.play-root) body {
 }
 
 .btn.accent {
+	border-color: #4e35c9;
 	background: linear-gradient(135deg, var(--accent-2), var(--accent));
 	color: #fff;
 	box-shadow:
@@ -164,6 +196,7 @@ html:has(.play-root) body {
 }
 
 .btn.danger {
+	border-color: #c4334e;
 	background: linear-gradient(135deg, #ff8197, var(--danger));
 	color: #fff;
 	box-shadow:
@@ -188,17 +221,19 @@ html:has(.play-root) body {
 
 .field {
 	width: 100%;
-	min-height: 60px;
-	padding: 0 18px;
-	border: none;
-	border-radius: 20px;
-	background: var(--bg);
-	box-shadow: var(--press);
+	min-height: 56px;
+	padding: 0 16px;
+	border: 1.5px solid var(--line);
+	border-radius: 12px;
+	background: var(--surface);
+	box-shadow: none;
 	color: var(--ink);
 	font: inherit;
-	font-size: 1.2rem;
+	font-size: 16px;
 	font-weight: 800;
+	line-height: 1.25;
 	text-align: center;
+	caret-color: var(--accent);
 }
 
 .field::placeholder {
@@ -207,23 +242,41 @@ html:has(.play-root) body {
 }
 
 .field:focus {
-	outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
-	outline-offset: 3px;
+	border-color: var(--accent);
+	border-width: 2px;
+	outline: none;
 }
 
-.chip {
+.chip,
+.pill {
 	padding: 9px 14px;
+	border: 1.5px solid var(--line);
 	border-radius: 999px;
-	background: var(--bg);
-	box-shadow: var(--raise-sm);
+	background: var(--surface);
+	box-shadow: none;
 	color: var(--muted);
 	font-size: 0.85rem;
 	font-weight: 800;
 }
 
 .chip.on {
-	box-shadow: var(--press-sm);
+	border-color: var(--accent);
+	background: var(--surface);
+	box-shadow: none;
 	color: var(--accent);
+}
+
+.exit-game {
+	position: absolute;
+	top: calc(10px + env(safe-area-inset-top));
+	left: var(--pad-x);
+	z-index: 50;
+	padding: 6px 0;
+	color: var(--muted);
+	font-size: 0.78rem;
+	font-weight: 800;
+	letter-spacing: 0.02em;
+	text-decoration: none;
 }
 
 .avatar {

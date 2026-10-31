@@ -18,7 +18,7 @@
 <style>
 	.seg {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
+		grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
 		gap: 8px;
 		padding: 8px;
 	}
@@ -27,7 +27,9 @@
 		display: grid;
 		gap: 2px;
 		padding: 14px 10px;
+		border: 1.5px solid transparent;
 		border-radius: 18px;
+		background: #fff;
 		color: var(--muted);
 		transition:
 			box-shadow 0.15s ease,
@@ -35,6 +37,7 @@
 	}
 
 	.opt.on {
+		border-color: var(--line);
 		box-shadow: var(--raise-sm);
 		color: var(--ink);
 	}

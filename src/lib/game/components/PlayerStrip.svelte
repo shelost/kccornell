@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { flip } from 'svelte/animate';
-	import { PLAYER_COLORS } from '$lib/game/ids';
 	import { pop } from '$lib/game/motion';
+	import Face from './Face.svelte';
 	import { rankByScore } from '$lib/game/sketch';
 	import type { Player } from '$lib/game/types';
 
@@ -10,13 +10,15 @@
 		scores,
 		meId,
 		drawerId = null,
-		solved = {}
+		solved = {},
+		lives = null
 	}: {
 		players: Player[];
 		scores: Record<string, number>;
 		meId: string;
 		drawerId?: string | null;
 		solved?: Record<string, boolean>;
+		lives?: Record<string, number> | null;
 	} = $props();
 
 	const ranked = $derived(rankByScore(players, scores));
@@ -25,20 +27,27 @@
 <div class="strip" aria-label="Players">
 	<ul>
 		{#each ranked as player (player.id)}
-			<li class:off={!player.connected} animate:flip={{ duration: 400 }}>
+			<li
+				class:off={!player.connected || (lives != null && (lives[player.id] ?? 0) <= 0)}
+				animate:flip={{ duration: 400 }}
+			>
 				<span class="face">
-					{#if solved[player.id]}
+					{#if solved[player.id] || player.id === drawerId}
 						<span class="halo" aria-hidden="true" {@attach pop()}><span class="ring"></span></span>
 					{/if}
-					<span class="avatar" style:background={PLAYER_COLORS[player.color] ?? '#6a4cf5'}>
-						{player.name.slice(0, 1).toUpperCase()}
-					</span>
+					<Face name={player.name} color={player.color} size={36} />
 					{#if player.id === drawerId}
-						<span class="badge" aria-label="drawing">✎</span>
+						<span class="badge" aria-label={lives ? 'their turn' : 'drawing'}>{lives ? '•' : '✎'}</span>
 					{/if}
 				</span>
 				<span class="nm" class:me={player.id === meId}>{player.name}</span>
-				<strong class:good={solved[player.id]}>{scores[player.id] ?? 0}</strong>
+				{#if lives}
+					<span class="hearts" aria-label="{(lives[player.id] ?? 0) + ' hearts'}">
+						{'♥'.repeat(Math.max(0, lives[player.id] ?? 0)) || '–'}
+					</span>
+				{:else}
+					<strong class:good={solved[player.id]}>{scores[player.id] ?? 0}</strong>
+				{/if}
 			</li>
 		{/each}
 	</ul>
@@ -83,12 +92,6 @@
 		position: relative;
 		display: grid;
 		place-items: center;
-	}
-
-	.avatar {
-		width: 36px;
-		height: 36px;
-		font-size: 0.9rem;
 	}
 
 	.halo {
@@ -143,6 +146,14 @@
 
 	strong.good {
 		color: var(--good);
+	}
+
+	.hearts {
+		color: var(--danger);
+		font-size: 0.68rem;
+		font-weight: 900;
+		letter-spacing: 0.04em;
+		line-height: 1;
 	}
 
 	@keyframes spin {

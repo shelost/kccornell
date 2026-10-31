@@ -2,11 +2,12 @@ export const MAX_PLAYERS = 20;
 export const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export const CODE_LENGTH = 4;
 
-export type GameMode = 'imposter' | 'sketch';
+export type GameMode = 'imposter' | 'sketch' | 'krillion';
 
 export const GAMES: Record<GameMode, { label: string; blurb: string; minPlayers: number }> = {
 	imposter: { label: 'Imposter', blurb: 'Find the faker', minPlayers: 3 },
-	sketch: { label: 'Sketch', blurb: 'Draw & guess', minPlayers: 2 }
+	sketch: { label: 'Sketch', blurb: 'Draw & guess', minPlayers: 2 },
+	krillion: { label: 'Krillion', blurb: 'Pass the puffer', minPlayers: 2 }
 };
 
 export type Phase =
@@ -18,7 +19,9 @@ export type Phase =
 	| 'result'
 	| 'sketch'
 	| 'sketch-reveal'
-	| 'sketch-final';
+	| 'sketch-final'
+	| 'krillion'
+	| 'krillion-final';
 
 export type Player = {
 	id: string;
@@ -37,6 +40,9 @@ export type RoomSettings = {
 	pollSeconds: number;
 	drawSeconds: number;
 	sketchRounds: number;
+	krillionHearts: number;
+	krillionSeconds: number;
+	krillionMinSeconds: number;
 };
 
 export type PollState = {
@@ -97,6 +103,45 @@ export type SketchState = {
 	turnEndsAt: number | null;
 };
 
+export type KrillionAnswer = {
+	id: string;
+	playerId: string;
+	text: string;
+	valid: boolean;
+	points: number;
+	at: number;
+	resolved: boolean;
+	word?: string;
+	near?: boolean;
+	note?: string;
+	bonus?: boolean;
+};
+
+export type KrillionState = {
+	turnId: string | null;
+	order: string[];
+	lives: Record<string, number>;
+	sparks: Record<string, number>;
+	used: string[];
+	answers: Record<string, KrillionAnswer>;
+	scores: Record<string, number>;
+	turnEndsAt: number | null;
+	turnMs: number;
+	lastWord: string | null;
+	lastPop: string | null;
+	winnerId: string | null;
+};
+
+export type TeamPlan = 'size' | 'count';
+
+export type TeamsState = {
+	status: 'forming' | 'ready';
+	plan: TeamPlan;
+	perTeam: number;
+	teamCount: number;
+	assignments: Record<string, number>;
+};
+
 export type RoomPublic = {
 	code: string;
 	hostId: string;
@@ -104,11 +149,13 @@ export type RoomPublic = {
 	mode: GameMode;
 	phase: Phase;
 	players: Record<string, Player>;
+	teams?: TeamsState | null;
 	settings: RoomSettings;
 	poll: PollState;
 	round: RoundState;
 	result?: ResultState | null;
 	sketch?: SketchState | null;
+	krillion?: KrillionState | null;
 };
 
 export type PrivateCard = {

@@ -17,18 +17,12 @@ function insetFromViewport(): number {
 	return Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
 }
 
-export function manualKeyboard(): Attachment {
-	return (element) => {
-		element.setAttribute('virtualkeyboardpolicy', 'manual');
-	};
-}
-
-/** Pins the play shell to the visual viewport and exposes --kb-inset for the guess bar. */
+/** Pins the guess bar when the keyboard still overlaps. Android resizes the layout instead of overlaying it. */
 export function pinKeyboard(): Attachment {
 	return (element) => {
 		const root = element as HTMLElement;
 		const vk = keyboardApi();
-		if (vk) vk.overlaysContent = true;
+		if (vk) vk.overlaysContent = false;
 
 		const apply = (px: number) => {
 			const inset = Math.max(0, Math.round(px));
@@ -41,7 +35,7 @@ export function pinKeyboard(): Attachment {
 			window.scrollTo(0, 0);
 		};
 
-		const sync = () => apply(Math.max(vk?.boundingRect.height ?? 0, insetFromViewport()));
+		const sync = () => apply(insetFromViewport());
 
 		vk?.addEventListener('geometrychange', sync);
 		window.visualViewport?.addEventListener('resize', sync);

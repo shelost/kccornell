@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { PLAYER_COLORS } from '$lib/game/ids';
 	import { staggerChildren } from '$lib/game/motion';
 	import type { Player } from '$lib/game/types';
+	import Face from './Face.svelte';
 
 	let {
 		players,
@@ -21,12 +21,8 @@
 </script>
 
 {#snippet face(player: Player)}
-	<span
-		class="avatar"
-		class:host={player.id === hostId}
-		style:background={PLAYER_COLORS[player.color] ?? '#6a4cf5'}
-	>
-		{player.name.slice(0, 1).toUpperCase()}
+	<span class="shot" class:host={player.id === hostId}>
+		<Face name={player.name} color={player.color} size={48} />
 	</span>
 	<span class="nm" class:me={player.id === meId}>{player.name}</span>
 	{#if player.ready}<span class="tag">ready</span>{/if}
@@ -79,7 +75,7 @@
 		box-shadow: var(--press);
 	}
 
-	.player.pick.on .avatar {
+	.player.pick.on .shot :global(.face) {
 		box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px var(--danger);
 	}
 
@@ -87,7 +83,7 @@
 		opacity: 0.45;
 	}
 
-	.avatar.host {
+	.shot.host :global(.face) {
 		box-shadow:
 			0 0 0 3px var(--bg),
 			0 0 0 5px var(--gold);

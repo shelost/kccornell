@@ -46,8 +46,9 @@
 	.track {
 		height: 16px;
 		padding: 3px;
+		border: 1.5px solid var(--line);
 		border-radius: 999px;
-		box-shadow: var(--press-sm);
+		background: #fff;
 		overflow: hidden;
 	}
 

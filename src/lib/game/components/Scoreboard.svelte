@@ -4,7 +4,7 @@
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
 	import CountUp from './CountUp.svelte';
-	import { PLAYER_COLORS } from '$lib/game/ids';
+	import Face from './Face.svelte';
 	import { pop, staggerChildren } from '$lib/game/motion';
 	import { rankByScore } from '$lib/game/sketch';
 	import type { Player } from '$lib/game/types';
@@ -78,8 +78,8 @@
 	{@const gain = gained[player.id] ?? 0}
 	<span class="bar" style:transform="scaleX({score / best})"></span>
 	<span class="rank">{place(player.id)}</span>
-	<span class="avatar" style:background={PLAYER_COLORS[player.color] ?? '#6a4cf5'}>
-		{player.name.slice(0, 1).toUpperCase()}
+	<span class="avatar">
+		<Face name={player.name} color={player.color} size={34} />
 	</span>
 	<span class="name">{player.name}</span>
 	{#if player.id === drawerId}
