@@ -99,7 +99,12 @@
 					.fromTo(
 						'.flash',
 						{ autoAlpha: 0.88 },
-						{ autoAlpha: 0, duration: 0.42, ease: 'power2.out' },
+						{
+							autoAlpha: 0,
+							duration: 0.42,
+							ease: 'power2.out',
+							immediateRender: false
+						},
 						'<'
 					);
 				for (const [index, tag] of tags.entries()) {

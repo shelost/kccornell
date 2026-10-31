@@ -17,6 +17,20 @@
 	const isTest = $derived(page.url.pathname.startsWith('/test'));
 
 	onNavigate((navigation) => {
+		const path = navigation.to?.url.pathname ?? '';
+		const dark =
+			path.startsWith('/play') ||
+			path.startsWith('/charades') ||
+			path.startsWith('/test') ||
+			path.startsWith('/create');
+		if (!dark) {
+			navigation.complete.then(() => {
+				document.documentElement.classList.remove('play-boot');
+				const theme = document.querySelector('meta[name="theme-color"]');
+				if (theme?.getAttribute('content') === '#000000') theme.setAttribute('content', '#ffffff');
+			});
+		}
+
 		if (!document.startViewTransition) return;
 
 		return new Promise((resolve) => {

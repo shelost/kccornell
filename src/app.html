@@ -7,6 +7,27 @@
 			content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
 		/>
 		<meta name="theme-color" content="#ffffff" />
+		<script>
+			{
+				const path = location.pathname;
+				const dark =
+					path.startsWith('/play') ||
+					path.startsWith('/charades') ||
+					path.startsWith('/test') ||
+					path.startsWith('/create');
+				if (dark) {
+					document.documentElement.classList.add('play-boot');
+					document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#000000');
+				}
+			}
+		</script>
+		<style>
+			html.play-boot,
+			html.play-boot body {
+				background: #000;
+				color-scheme: dark;
+			}
+		</style>
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link
