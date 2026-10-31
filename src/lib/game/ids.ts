@@ -39,9 +39,16 @@ export function pickN<T>(items: T[], n: number): T[] {
 }
 
 export function suggestedImposters(playerCount: number): number {
+	if (playerCount <= 1) return 0;
 	if (playerCount >= 15) return 3;
 	if (playerCount >= 8) return 2;
 	return 1;
+}
+
+export function dealImposters(playerCount: number, requested: number): number {
+	if (playerCount <= 1) return Math.random() < 0.5 ? 1 : 0;
+	if (playerCount === 2) return 1;
+	return Math.min(requested, Math.max(1, playerCount - 2));
 }
 
 export const PLAYER_COLORS = [

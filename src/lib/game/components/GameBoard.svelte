@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import Alerts from './Alerts.svelte';
+	import CharadesBoard from './CharadesBoard.svelte';
 	import CountdownBar from './CountdownBar.svelte';
 	import ModePicker from './ModePicker.svelte';
 	import KrillionBoard from './KrillionBoard.svelte';
@@ -80,9 +81,11 @@
 		game.phase === 'sketch' ||
 			game.phase === 'sketch-reveal' ||
 			game.phase === 'krillion' ||
-			game.phase === 'krillion-reveal'
+			game.phase === 'krillion-reveal' ||
+			game.phase === 'charades'
 	);
 	const subtitle = $derived.by(() => {
+		if (game.phase === 'charades') return 'Charades';
 		if ((game.phase === 'krillion' || game.phase === 'krillion-reveal') && game.krillion) {
 			const round = (game.krillion.round ?? 0) + 1;
 			const total = game.krillion.roundTotal ?? game.room?.settings.krillionRounds ?? 12;
@@ -215,6 +218,8 @@
 				{#if game.phase === 'krillion'}
 					<button class="btn small" type="button" onclick={() => game.popKrillion()}>End round</button>
 				{/if}
+			{:else if game.phase === 'charades'}
+				<button class="btn small" type="button" onclick={() => game.nextRound()}>Lobby</button>
 			{:else}
 				{@render sketchSettings(false)}
 				<button class="btn small" type="button" onclick={() => game.endSketchTurn()}>End turn</button>
@@ -241,7 +246,7 @@
 				<span class="team-chip">Team {game.room.teams.assignments[game.playerId]}</span>
 			{/if}
 		</div>
-		{#if game.isHost && (game.phase === 'sketch' || game.phase === 'krillion' || game.phase === 'krillion-reveal')}
+		{#if game.isHost && (game.phase === 'sketch' || game.phase === 'krillion' || game.phase === 'krillion-reveal' || game.phase === 'charades')}
 			{@render hostMenu()}
 		{:else}
 			<span class="count">{game.playerCount}/{MAX_PLAYERS}</span>
@@ -287,30 +292,37 @@
 						<details class="settings">
 							<summary class="btn small">Settings</summary>
 							<div class="stack panel">
-								<p class="label">Themes in the poll</p>
-								<div class="row">
-									{#each THEMES as theme (theme.id)}
-										<button
-											class="chip"
-											class:on={game.room.poll.themeIds.includes(theme.id)}
-											type="button"
-											onclick={() => game.togglePollTheme(theme.id)}
-										>
-											{theme.label}
-										</button>
-									{/each}
-								</div>
-								{#if game.mode === 'imposter'}
-									{@render setting('Imposters', game.room.settings.imposterCount, IMPOSTER_OPTIONS, (n) =>
-										game.setImposterCount(n)
-									)}
-									{@render setting('Discussion', game.room.settings.discussSeconds, DISCUSS_OPTIONS, (n) =>
-										game.setSetting('discussSeconds', n)
-									)}
+								{#if game.mode === 'charades'}
+									<p class="muted">Timer and theme live on the board. Pass the phone to whoever is acting.</p>
+								{:else}
+									<p class="label">Themes in the poll</p>
+									<div class="row">
+										{#each THEMES as theme (theme.id)}
+											<button
+												class="chip"
+												class:on={game.room.poll.themeIds.includes(theme.id)}
+												type="button"
+												onclick={() => game.togglePollTheme(theme.id)}
+											>
+												{theme.label}
+											</button>
+										{/each}
+									</div>
+									{#if game.mode === 'imposter'}
+										{@render setting('Imposters', game.room.settings.imposterCount, IMPOSTER_OPTIONS, (n) =>
+											game.setImposterCount(n)
+										)}
+										{@render setting(
+											'Discussion',
+											game.room.settings.discussSeconds,
+											DISCUSS_OPTIONS,
+											(n) => game.setSetting('discussSeconds', n)
+										)}
 								{:else if game.mode === 'sketch'}
 									{@render sketchSettings(true)}
-								{:else}
+								{:else if game.mode === 'krillion'}
 									{@render krillionSettings()}
+								{/if}
 								{/if}
 							</div>
 						</details>
@@ -389,9 +401,23 @@
 				</section>
 			{:else if game.phase === 'result'}
 				<section class="stack" {@attach pop()}>
-					<p class="label">{game.room.result?.villageWon ? 'Caught!' : 'Got away'}</p>
+					<p class="label">
+						{#if !game.room.result?.imposters.length}
+							Practice
+						{:else if game.room.result?.villageWon}
+							Caught!
+						{:else}
+							Got away
+						{/if}
+					</p>
 					<h1 class="title">
-						{game.room.result?.villageWon ? 'Players win' : 'Imposter wins'}
+						{#if !game.room.result?.imposters.length}
+							You had the word
+						{:else if game.room.result?.villageWon}
+							Players win
+						{:else}
+							Imposter wins
+						{/if}
 					</h1>
 					<div class="neu">
 						<p class="label">The word was</p>
@@ -406,7 +432,9 @@
 						{/each}
 					</div>
 					<p class="muted">
-						{#if game.room.result?.accused}
+						{#if !game.room.result?.imposters.length}
+							Solo round — no imposter this time.
+						{:else if game.room.result?.accused}
 							Voted out: {game.room.players[game.room.result.accused]?.name ?? 'someone'}
 						{:else}
 							Tie vote — the imposter slips away.
@@ -417,11 +445,22 @@
 				<SketchBoard />
 			{:else if game.phase.startsWith('krillion')}
 				<KrillionBoard />
+			{:else if game.phase === 'charades'}
+				{#if game.isHost}
+					<CharadesBoard />
+				{:else}
+					<section class="stack" {@attach rise()}>
+						<h1 class="title">Charades</h1>
+						<p class="muted">
+							Watch {host?.name ?? 'the host'} and shout the word. Don’t peek at their screen.
+						</p>
+					</section>
+				{/if}
 			{/if}
 		</main>
 	{/key}
 
-	{#if game.isHost && game.phase !== 'sketch' && game.phase !== 'krillion'}
+	{#if game.isHost && game.phase !== 'sketch' && game.phase !== 'krillion' && game.phase !== 'charades'}
 		<div class="dock">
 			{#if game.phase === 'lobby'}
 				<button
@@ -430,7 +469,13 @@
 					disabled={game.playerCount < meta.minPlayers}
 					onclick={() => game.startPoll()}
 				>
-					{game.playerCount < meta.minPlayers ? `Need ${meta.minPlayers} players` : 'Start'}
+					{#if game.playerCount < meta.minPlayers}
+						Need {meta.minPlayers} players
+					{:else if game.playerCount === 1}
+						Play solo
+					{:else}
+						Start
+					{/if}
 				</button>
 			{:else if game.phase === 'poll'}
 				{#if game.mode === 'sketch'}

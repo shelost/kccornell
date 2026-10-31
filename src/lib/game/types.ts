@@ -2,12 +2,13 @@ export const MAX_PLAYERS = 20;
 export const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export const CODE_LENGTH = 4;
 
-export type GameMode = 'imposter' | 'sketch' | 'krillion';
+export type GameMode = 'imposter' | 'sketch' | 'krillion' | 'charades';
 
 export const GAMES: Record<GameMode, { label: string; blurb: string; minPlayers: number }> = {
-	imposter: { label: 'Imposter', blurb: 'Find the faker', minPlayers: 3 },
-	sketch: { label: 'Sketch', blurb: 'Draw & guess', minPlayers: 2 },
-	krillion: { label: 'Krillion', blurb: 'Rarest word wins', minPlayers: 2 }
+	imposter: { label: 'Imposter', blurb: 'Find the faker', minPlayers: 1 },
+	sketch: { label: 'Sketch', blurb: 'Draw & guess', minPlayers: 1 },
+	krillion: { label: 'Krillion', blurb: 'Rarest word wins', minPlayers: 1 },
+	charades: { label: 'Charades', blurb: 'Act it out', minPlayers: 1 }
 };
 
 export type Phase =
@@ -22,7 +23,8 @@ export type Phase =
 	| 'sketch-final'
 	| 'krillion'
 	| 'krillion-reveal'
-	| 'krillion-final';
+	| 'krillion-final'
+	| 'charades';
 
 export type Player = {
 	id: string;

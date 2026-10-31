@@ -21,6 +21,7 @@
 		const guessers = game.players.filter((player) => player.id !== sketch?.drawerId);
 		const got = guessers.filter((player) => sketch?.guessed[player.id]).length;
 		const artist = drawer?.id === game.playerId ? 'You drew' : `${drawer?.name ?? 'Someone'} drew`;
+		if (guessers.length === 0) return `${artist} · solo practice`;
 		if (got === 0) return `${artist} · nobody got it`;
 		if (got === guessers.length) return `${artist} · everyone got it`;
 		return `${artist} · ${got} of ${guessers.length} got it`;

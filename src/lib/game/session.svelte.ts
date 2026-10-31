@@ -28,7 +28,15 @@ import {
 	type SketchState,
 	type Stroke
 } from './types';
-import { pickN, PLAYER_COLORS, randomCode, shortId, shuffle, suggestedImposters } from './ids';
+import {
+	dealImposters,
+	pickN,
+	PLAYER_COLORS,
+	randomCode,
+	shortId,
+	shuffle,
+	suggestedImposters
+} from './ids';
 import { watchHall, type HallGuest, type HallHandle } from './hall';
 import { matchProfile } from './profiles';
 
@@ -599,6 +607,10 @@ export class GameSession {
 			this.#fail(`Need at least ${minPlayers} players`);
 			return;
 		}
+		if (room.mode === 'charades') {
+			await this.#write({ phase: 'charades' });
+			return;
+		}
 		const patch: Record<string, unknown> = {
 			phase: 'poll',
 			'poll/status': 'open',
@@ -650,7 +662,7 @@ export class GameSession {
 			return;
 		}
 		const { secret, usedWords } = this.#pickWord(theme);
-		const count = Math.min(room.settings.imposterCount, Math.max(1, this.playerCount - 2));
+		const count = dealImposters(this.playerCount, room.settings.imposterCount);
 		const imposters = new Set(pickN(this.players, count).map((player) => player.id));
 		const deal = { secret, imposters: [...imposters] };
 		const cards: Record<string, PrivateCard> = {};
@@ -743,7 +755,7 @@ export class GameSession {
 		if (!this.isHost || !room) return;
 		const secret = this.#secret();
 		const imposters = this.card?.deal?.imposters ?? [];
-		if (!secret || imposters.length === 0) {
+		if (!secret) {
 			this.#fail('Missing the round secret — start a new round.');
 			return;
 		}
@@ -755,7 +767,7 @@ export class GameSession {
 				themeId: room.round.themeId ?? this.card?.themeId ?? '',
 				imposters,
 				accused: winner,
-				villageWon: Boolean(winner && imposters.includes(winner))
+				villageWon: imposters.length === 0 || Boolean(winner && imposters.includes(winner))
 			}
 		});
 		if (saved) await this.#setCards({});
