@@ -570,6 +570,7 @@
 		border: 1.5px solid var(--line);
 		border-radius: 999px;
 		background: #fff;
+		color: #111;
 		font-size: 0.72rem;
 		font-weight: 800;
 	}
@@ -620,6 +621,7 @@
 		border: 1.5px solid var(--line);
 		border-radius: 999px;
 		background: #fff;
+		color: #111;
 		font-size: 0.85rem;
 		font-weight: 800;
 	}
@@ -639,6 +641,7 @@
 		border: 1.5px solid var(--line);
 		border-radius: 22px;
 		background: #fff;
+		color: #111;
 		box-shadow: var(--raise-sm);
 	}
 
@@ -714,6 +717,7 @@
 		border: 1.5px solid var(--line);
 		border-radius: 24px;
 		background: #fff;
+		color: #111;
 	}
 
 	.set {
@@ -729,7 +733,7 @@
 		border: 1.5px solid var(--line);
 		border-radius: 14px;
 		background: #fff;
-		color: var(--ink);
+		color: #111;
 		font: inherit;
 		font-weight: 800;
 	}
@@ -776,17 +780,19 @@
 		border: 1.5px solid var(--line);
 		border-radius: 22px;
 		background: #fff;
+		color: #111;
 		transition: box-shadow 0.15s ease;
 	}
 
 	.theme strong {
 		font-size: 1rem;
 		font-weight: 800;
+		color: #111;
 	}
 
 	.theme span {
 		font-size: 0.78rem;
-		color: var(--muted);
+		color: #111;
 		font-weight: 700;
 	}
 
@@ -861,6 +867,7 @@
 		border: 1.5px solid var(--line);
 		border-radius: 999px;
 		background: #fff;
+		color: #111;
 		font-size: 1.15rem;
 		font-weight: 900;
 	}

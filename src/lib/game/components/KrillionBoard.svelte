@@ -74,7 +74,7 @@
 		<div class="headline">
 			<p class="label">One answer. Rarest wins.</p>
 			<h1 class="heading">{rule}</h1>
-			<p class="muted last">Letters only, ignoring spaces. It has to be on the list.</p>
+			<p class="muted last">Spaces don’t count as letters. The answer has to be on the list.</p>
 		</div>
 		<form class="guess" onsubmit={send}>
 			<input
@@ -157,6 +157,12 @@
 		border: 1.5px solid var(--line);
 		border-radius: 12px;
 		background: #fff;
+		color: #111;
+	}
+
+	.ranks strong,
+	.ranks b {
+		color: #111;
 	}
 
 	.ranks li span {
@@ -167,7 +173,7 @@
 
 	.ranks em {
 		font-style: normal;
-		color: var(--muted);
+		color: #333;
 		font-size: 0.85rem;
 	}
 

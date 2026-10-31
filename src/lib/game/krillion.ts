@@ -41,6 +41,18 @@ export function matchKrillion(
 const LETTERS = 'abcdefghijklmnopqrstuvwxyz'.split('');
 const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
 
+function headNoun(category: string): string {
+	const words = category.split(/\s+/);
+	const of = words.findIndex((word) => word.toLowerCase() === 'of');
+	return (of > 0 ? words[of - 1] : words[words.length - 1]) ?? category;
+}
+
+function isPlural(category: string): boolean {
+	const noun = headNoun(category);
+	if (/(ss|is|us|os)$/i.test(noun)) return false;
+	return /s$/i.test(noun);
+}
+
 function poolSize(words: string[], prompt: KrillionPrompt): number {
 	return words.filter((word) => matchesPrompt(word, prompt)).length;
 }
@@ -55,6 +67,9 @@ export function matchesPrompt(word: string, prompt: KrillionPrompt): boolean {
 }
 
 export function buildPrompt(category: string, words: string[], asked: string[]): KrillionPrompt {
+	const plural = isPlural(category);
+	const start = plural ? 'start' : 'starts';
+	const end = plural ? 'end' : 'ends';
 	const candidates: KrillionPrompt[] = [];
 	const consider = (prompt: KrillionPrompt) => {
 		if (asked.includes(prompt.id)) return;
@@ -65,28 +80,22 @@ export function buildPrompt(category: string, words: string[], asked: string[]):
 		const upper = letter.toUpperCase();
 		consider({
 			id: `starts:${letter}`,
-			label: `${category} that start with ${upper}`,
+			label: `${category} that ${start} with ${upper}`,
 			kind: 'starts',
 			value: letter
 		});
 		consider({
 			id: `ends:${letter}`,
-			label: `${category} that end with ${letter}`,
+			label: `${category} that ${end} with ${letter}`,
 			kind: 'ends',
 			value: letter
 		});
-		consider({
-			id: `contains:${letter}`,
-			label: `${category} that contain ${letter}, but don’t start with ${upper}`,
-			kind: 'contains',
-			value: letter
-		});
 	}
-	for (let count = 3; count <= 14; count++) {
+	for (let count = 3; count <= 12; count++) {
 		const name = NUMBER_WORDS[count] ?? String(count);
 		consider({
 			id: `letters:${count}`,
-			label: `${category} with exactly ${name} letters, ignoring spaces`,
+			label: `${category} with exactly ${name} letters`,
 			kind: 'letters',
 			value: String(count)
 		});

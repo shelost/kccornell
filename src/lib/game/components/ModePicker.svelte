@@ -30,7 +30,7 @@
 		border: 1.5px solid transparent;
 		border-radius: 18px;
 		background: #fff;
-		color: var(--muted);
+		color: #111;
 		transition:
 			box-shadow 0.15s ease,
 			color 0.15s ease;
@@ -39,7 +39,7 @@
 	.opt.on {
 		border-color: var(--line);
 		box-shadow: var(--raise-sm);
-		color: var(--ink);
+		color: #111;
 	}
 
 	.opt.on strong {
