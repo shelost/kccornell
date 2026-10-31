@@ -6,7 +6,8 @@ html:has(.play-root) body {
 	max-width: 100dvw;
 	max-height: 100dvh;
 	overscroll-behavior: none;
-	background: #f4efe4;
+	background: #000;
+	color-scheme: dark;
 }
 
 html:has(.play-root.scrollable),
@@ -16,13 +17,9 @@ html:has(.play-root.scrollable) body {
 	max-height: none;
 }
 
-html:has(.play-root) {
-	background: #000;
-}
-
 .play-root {
 	position: relative;
-	--bg: #0c0b10;
+	--bg: #000000;
 	--surface: #18171e;
 	--line: #2e2c36;
 	--sd: #050508;
@@ -34,6 +31,8 @@ html:has(.play-root) {
 	--danger: #ee4b6a;
 	--good: #17b077;
 	--gold: #f3a52b;
+	--pill: rgba(255, 255, 255, 0.08);
+	--pill-line: rgba(255, 255, 255, 0.14);
 	--raise: 9px 9px 18px var(--sd), -9px -9px 18px var(--sl);
 	--raise-sm: 5px 5px 10px var(--sd), -5px -5px 10px var(--sl);
 	--press: inset 6px 6px 12px var(--sd), inset -6px -6px 12px var(--sl);
@@ -71,13 +70,17 @@ html:has(.play-root) {
 }
 
 .play-frame {
-	width: min(440px, 100%);
+	width: 100%;
 	height: 100%;
-	margin-inline: auto;
 	display: flex;
 	flex-direction: column;
 	min-height: 0;
 	overflow: hidden;
+}
+
+.play-col {
+	width: min(100%, 28rem);
+	margin-inline: auto;
 }
 
 .play-root.scrollable .play-frame {
@@ -223,9 +226,9 @@ html:has(.play-root) {
 	width: 100%;
 	min-height: 56px;
 	padding: 0 16px;
-	border: 1.5px solid var(--line);
+	border: 1.5px solid var(--pill-line);
 	border-radius: 12px;
-	background: var(--surface);
+	background: var(--pill);
 	box-shadow: none;
 	color: var(--ink);
 	font: inherit;
@@ -234,6 +237,14 @@ html:has(.play-root) {
 	line-height: 1.25;
 	text-align: center;
 	caret-color: var(--accent);
+}
+
+.field.name {
+	min-height: 92px;
+	padding: 0 22px;
+	border-radius: 24px;
+	font-size: clamp(1.45rem, 6vw, 1.9rem);
+	letter-spacing: -0.03em;
 }
 
 .field::placeholder {
@@ -250,20 +261,20 @@ html:has(.play-root) {
 .chip,
 .pill {
 	padding: 9px 14px;
-	border: 1.5px solid var(--line);
+	border: 1.5px solid var(--pill-line);
 	border-radius: 999px;
-	background: var(--surface);
+	background: var(--pill);
 	box-shadow: none;
-	color: var(--muted);
+	color: var(--ink);
 	font-size: 0.85rem;
 	font-weight: 800;
 }
 
 .chip.on {
-	border-color: var(--accent);
-	background: var(--surface);
+	border-color: color-mix(in srgb, var(--accent) 70%, white);
+	background: color-mix(in srgb, var(--accent) 22%, transparent);
 	box-shadow: none;
-	color: var(--accent);
+	color: #efe8ff;
 }
 
 .exit-game {

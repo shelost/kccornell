@@ -12,7 +12,7 @@
 
 <svelte:head>
 	<title>Create · KCC</title>
-	<meta name="theme-color" content="#f4efe4" />
+	<meta name="theme-color" content="#000000" />
 	<link
 		href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800;900&display=swap"
 		rel="stylesheet"

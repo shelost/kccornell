@@ -690,7 +690,7 @@ export class GameSession {
 	}
 
 	async openVote() {
-		if (!this.isHost) return;
+		if (!this.isHost || this.room?.phase !== 'discuss') return;
 		const patch: Record<string, unknown> = {
 			phase: 'vote',
 			'round/timerEndsAt': null,
@@ -1078,12 +1078,13 @@ export class GameSession {
 
 	#armTimers() {
 		const room = this.room;
+		const discussEnds = room?.phase === 'discuss' ? (room.round.timerEndsAt ?? null) : null;
 		const ends =
 			room?.phase === 'sketch'
 				? (room.sketch?.turnEndsAt ?? null)
 				: room?.phase === 'krillion'
 					? (room.krillion?.turnEndsAt ?? null)
-					: null;
+					: discussEnds;
 		if (ends === this.#armedFor) return;
 		this.#clearTimers();
 		this.#armedFor = ends;
@@ -1094,6 +1095,10 @@ export class GameSession {
 			}, Math.max(0, time - Date.now()));
 			this.#timers.push(timer);
 		};
+		if (room.phase === 'discuss') {
+			at(ends + 150, () => this.openVote());
+			return;
+		}
 		if (room.phase === 'sketch') {
 			const duration = room.settings.drawSeconds * 1000;
 			at(ends - duration / 2, () => this.#revealHint(1));

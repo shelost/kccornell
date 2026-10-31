@@ -7,11 +7,13 @@
 	let {
 		profile,
 		onContinue,
-		cta = 'Continue'
+		cta = 'Continue',
+		showCta = true
 	}: {
 		profile: Profile;
 		onContinue: () => void;
 		cta?: string;
+		showCta?: boolean;
 	} = $props();
 
 	const enter = rise();
@@ -25,7 +27,9 @@
 	<h1 class="title">Welcome Back, {profile.shortName}!</h1>
 	<Hashtags tags={profile.tags} />
 	<p class="muted">{profile.displayName}</p>
-	<span class="btn accent">{cta}</span>
+	{#if showCta}
+		<span class="btn accent">{cta}</span>
+	{/if}
 </button>
 
 <style>

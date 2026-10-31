@@ -56,6 +56,7 @@
 		height: 100dvh;
 		max-height: 100dvh;
 		overflow: hidden;
+		background: #000;
 	}
 
 	main.is-play.is-test {

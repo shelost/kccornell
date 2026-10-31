@@ -40,16 +40,17 @@
 		display: flex;
 		flex-wrap: wrap;
 		justify-content: center;
-		gap: 6px;
+		gap: 10px;
 		margin: 0;
 	}
 
 	.tag {
-		padding: 4px 8px;
-		border: 1.5px solid var(--line);
+		padding: 10px 16px;
+		border: 1.5px solid var(--pill-line);
 		border-radius: 999px;
-		background: #fff;
-		font-size: 0.72rem;
+		background: var(--pill);
+		color: var(--ink);
+		font-size: 1.05rem;
 		font-weight: 800;
 		letter-spacing: -0.02em;
 	}

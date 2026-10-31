@@ -20,7 +20,11 @@
 	let step = $state<'intro' | 'rate' | 'name' | 'welcome' | 'lobby'>('intro');
 	const profile = $derived(matchProfile(name));
 	const codeReady = $derived(normalizeCode(code).length === CODE_LENGTH);
+	const nameReady = $derived(name.trim().length >= 2);
 	const introAnim = playIntro();
+	const nextStep = $derived(
+		step === 'intro' ? 'rate' : step === 'rate' ? 'name' : step === 'welcome' ? 'lobby' : null
+	);
 
 	function slamWord(word: Element, intensity: number) {
 		const slam = gsap.timeline();
@@ -49,7 +53,9 @@
 
 	function playIntro(): Attachment {
 		return (element) => {
-			const hidden = element.querySelectorAll('.kicker, .word, .tag, .rule, .feat, .spark, .go, .flash');
+			const hidden = element.querySelectorAll(
+				'.kicker, .word, .tag, .rule, .feat, .spark, .go, .flash'
+			);
 			const words = Array.from(element.querySelectorAll('.word'));
 			const tags = Array.from(element.querySelectorAll('.tag'));
 			const intro = element.querySelector('.intro');
@@ -96,10 +102,9 @@
 						{ autoAlpha: 0, duration: 0.42, ease: 'power2.out' },
 						'<'
 					);
-				tags.forEach((tag, index) => {
-					if (!tag) return;
+				for (const [index, tag] of tags.entries()) {
 					tl.add(slamWord(tag, index), '+=0.08');
-				});
+				}
 				tl.fromTo(
 						'.rule',
 						{ scaleX: 0, autoAlpha: 0 },
@@ -142,9 +147,9 @@
 	<button class="exit-game" type="button" onclick={() => (step = 'intro')}>Exit</button>
 {/if}
 
-<div class={['home', { cinema: step === 'intro' }]}>
+<div class={['home', { cinema: step === 'intro' }]} {@attach step === 'intro' && introAnim}>
 	{#if step === 'intro'}
-		<div class="intro-wrap" {@attach introAnim}>
+		<div class="intro-wrap">
 			<div class="flash" aria-hidden="true"></div>
 			<div class="intro">
 				<span class="spark s1" aria-hidden="true"></span>
@@ -166,19 +171,18 @@
 				<span class="rule" aria-hidden="true"></span>
 				<p class="feat">feat. Junior Ahn</p>
 			</div>
-			<button class="btn accent go" type="button" onclick={() => (step = 'rate')}>Next</button>
 		</div>
 	{:else if step === 'rate'}
-		<div class="stage rate">
+		<div class="stage rate play-col">
 			<h1 class="title">Rate the app</h1>
 			<RateSlider bind:value={rating} />
-			<button class="btn accent" type="button" onclick={() => (step = 'name')}>Next</button>
 		</div>
 	{:else if step === 'name'}
-		<div class="stage">
+		<div class="stage play-col">
 			<NameStep
 				bind:value={name}
 				cta="Next"
+				showCta={false}
 				onSubmit={() => {
 					game.saveName(name);
 					step = profile ? 'welcome' : 'lobby';
@@ -186,9 +190,11 @@
 			/>
 		</div>
 	{:else if step === 'welcome' && profile}
-		<WelcomeBack {profile} cta="Next" onContinue={() => (step = 'lobby')} />
+		<div class="stage play-col">
+			<WelcomeBack showCta={false} {profile} cta="Next" onContinue={() => (step = 'lobby')} />
+		</div>
 	{:else}
-		<div class="lobby" {@attach rise()}>
+		<div class="lobby play-col" {@attach rise()}>
 			<p class="label">Lobby</p>
 			<h1 class="hello">
 				{profile ? `Welcome Back, ${profile.shortName}` : `Welcome, ${name.trim()}`}
@@ -224,10 +230,23 @@
 			{/if}
 		</div>
 	{/if}
+
+	{#if step === 'name'}
+		<div class="cta-dock">
+			<button class="btn accent go" type="submit" form="name-step" disabled={!nameReady || game.busy}>
+				Next
+			</button>
+		</div>
+	{:else if nextStep}
+		<div class="cta-dock">
+			<button class="btn accent go" type="button" onclick={() => (step = nextStep)}>Next</button>
+		</div>
+	{/if}
 </div>
 
 <style>
 	.home {
+		position: relative;
 		flex: 1;
 		min-height: 0;
 		display: flex;
@@ -248,11 +267,8 @@
 	.intro-wrap {
 		position: relative;
 		align-content: stretch;
-		grid-template-rows: 1fr auto;
-		margin: calc(-16px - env(safe-area-inset-top)) calc(-1 * var(--pad-x))
-			calc(-20px - env(safe-area-inset-bottom));
-		padding: calc(16px + env(safe-area-inset-top)) var(--pad-x)
-			calc(20px + env(safe-area-inset-bottom));
+		margin: calc(-16px - env(safe-area-inset-top)) calc(-1 * var(--pad-x)) 0;
+		padding: calc(16px + env(safe-area-inset-top)) var(--pad-x) 84px;
 		background: #000;
 		color: #f6f1ea;
 	}
@@ -318,6 +334,10 @@
 		opacity: 0.5;
 	}
 
+	.stage {
+		padding-bottom: 84px;
+	}
+
 	.rate {
 		justify-items: center;
 		overflow-x: hidden;
@@ -345,14 +365,13 @@
 		z-index: 4;
 	}
 
-	.kicker,
-	.word,
-	.tag,
-	.rule,
-	.feat,
-	.spark,
-	.go {
+	.cinema :is(.kicker, .word, .tag, .rule, .feat, .spark, .go) {
 		visibility: hidden;
+	}
+
+	.go {
+		width: min(100%, 28rem);
+		justify-self: center;
 	}
 
 	@media (prefers-reduced-motion: reduce) {
@@ -400,18 +419,18 @@
 		display: flex;
 		flex-wrap: wrap;
 		justify-content: center;
-		gap: 8px;
-		max-width: 18rem;
+		gap: 10px;
+		max-width: 22rem;
 		margin-top: 16px;
 	}
 
 	.tag {
-		padding: 6px 10px;
-		border: 1.5px solid #3a3644;
+		padding: 10px 16px;
+		border: 1.5px solid var(--pill-line);
 		border-radius: 999px;
-		background: #16151c;
-		color: #f3efe6;
-		font-size: 0.82rem;
+		background: var(--pill);
+		color: var(--ink);
+		font-size: 1.05rem;
 		font-weight: 800;
 	}
 

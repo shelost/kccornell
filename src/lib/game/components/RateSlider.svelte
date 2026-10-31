@@ -4,6 +4,7 @@
 	let { value = $bindable(0) }: { value?: number } = $props();
 
 	const MAX = 10;
+	const KNOB = 24;
 	const labels = [
 		{ at: 10, text: 'God tier' },
 		{ at: 5, text: 'Amazing' },
@@ -14,13 +15,12 @@
 	const down = $derived(gsap.utils.clamp(0, 1, 1 - t * 2));
 	const mid = $derived(gsap.utils.clamp(0, 1, 1 - Math.abs(t - 0.5) * 2));
 	const up = $derived(gsap.utils.clamp(0, 1, t * 2 - 1));
-	const fillPct = $derived(t * 100);
 
 	function fromPointer(rail: HTMLElement, clientY: number) {
-		const rect = rail.getBoundingClientRect();
-		const pad = 20;
-		const usable = Math.max(1, rect.height - pad * 2);
-		const fromBottom = rect.bottom - pad - clientY;
+		const track = rail.querySelector('.track');
+		const rect = (track instanceof HTMLElement ? track : rail).getBoundingClientRect();
+		const usable = Math.max(1, rect.height - KNOB);
+		const fromBottom = rect.bottom - KNOB / 2 - clientY;
 		return gsap.utils.clamp(0, MAX, (fromBottom / usable) * MAX);
 	}
 
@@ -29,7 +29,7 @@
 	}
 </script>
 
-	<div class="rate-block">
+<div class="rate-block">
 	<div class="faces" aria-hidden="true">
 		<img src="/caleb_thumbs_down.png" alt="" style:opacity={`${down}`} />
 		<img src="/caleb_thumbs_mid.png" alt="" style:opacity={`${mid}`} />
@@ -45,6 +45,8 @@
 		</ol>
 		<div
 			class="rail"
+			style:--t={t}
+			style:--knob="{KNOB}px"
 			role="slider"
 			tabindex="0"
 			aria-valuemin={0}
@@ -72,8 +74,8 @@
 			}}
 		>
 			<div class="track">
-				<div class="fill" style:height={`${fillPct}%`}></div>
-				<div class="thumb" style:bottom={`${fillPct}%`}></div>
+				<div class="fill"></div>
+				<div class="thumb"></div>
 			</div>
 		</div>
 	</div>
@@ -109,7 +111,7 @@
 
 	.meter {
 		display: grid;
-		grid-template-columns: auto 56px;
+		grid-template-columns: auto 32px;
 		align-items: stretch;
 		gap: 14px;
 		height: min(38dvh, 280px);
@@ -121,7 +123,7 @@
 		flex-direction: column;
 		justify-content: space-between;
 		margin: 0;
-		padding: 10px 0;
+		padding: 2px 0;
 		list-style: none;
 		text-align: right;
 		font-size: 1rem;
@@ -130,11 +132,12 @@
 
 	.rail {
 		position: relative;
-		width: 56px;
-		padding: 20px 0;
-		border: 1.5px solid var(--line);
+		width: 32px;
+		padding: 4px;
+		border: 0;
 		border-radius: 999px;
-		background: #fff;
+		background: rgba(255, 255, 255, 0.08);
+		box-shadow: none;
 		touch-action: none;
 		cursor: ns-resize;
 	}
@@ -146,9 +149,10 @@
 
 	.fill {
 		position: absolute;
-		left: 8px;
-		right: 8px;
+		left: 0;
+		right: 0;
 		bottom: 0;
+		height: calc(var(--knob) + (100% - var(--knob)) * var(--t));
 		border-radius: 999px;
 		background: linear-gradient(to top, var(--accent-2), var(--accent));
 	}
@@ -156,13 +160,14 @@
 	.thumb {
 		position: absolute;
 		left: 50%;
-		width: 36px;
-		height: 36px;
-		border: 1.5px solid var(--line);
+		bottom: calc((100% - var(--knob)) * var(--t));
+		width: var(--knob);
+		height: var(--knob);
+		border: 0;
 		border-radius: 50%;
 		background: #fff;
-		transform: translate(-50%, 50%);
+		transform: translateX(-50%);
 		pointer-events: none;
-		box-shadow: var(--raise-sm);
+		box-shadow: none;
 	}
 </style>
