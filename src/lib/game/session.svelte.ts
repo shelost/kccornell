@@ -10,15 +10,7 @@ import {
 	wordHint,
 	wordKey
 } from './sketch';
-import {
-	aliveIds,
-	matchKrillion,
-	nextAlive,
-	nextTurnMs,
-	rarityPoints,
-	SPARK_GOAL,
-	speedPoints
-} from './krillion';
+import { buildPrompt, rankKrillion } from './krillion';
 import { getTheme, THEMES, type Theme } from './themes';
 import {
 	GAMES,
@@ -37,6 +29,8 @@ import {
 	type Stroke
 } from './types';
 import { pickN, PLAYER_COLORS, randomCode, shortId, shuffle, suggestedImposters } from './ids';
+import { watchHall, type HallGuest, type HallHandle } from './hall';
+import { matchProfile } from './profiles';
 
 const NAME_KEY = 'kcc-imposter-name';
 
@@ -47,8 +41,9 @@ const DEFAULT_SETTINGS: RoomSettings = {
 	drawSeconds: 600,
 	sketchRounds: 1,
 	krillionHearts: 3,
-	krillionSeconds: 12,
-	krillionMinSeconds: 5
+	krillionSeconds: 30,
+	krillionMinSeconds: 5,
+	krillionRounds: 12
 };
 
 type Tally = {
@@ -182,6 +177,7 @@ export class GameSession {
 	card = $state.raw<PrivateCard | null>(null);
 	ink = $state.raw<Stroke | null>(null);
 	online = $state.raw<Set<string> | null>(null);
+	here = $state.raw<HallGuest[]>([]);
 	alerts = $state.raw<Alert[]>([]);
 	playerId = $state('');
 	busy = $state(false);
@@ -190,6 +186,7 @@ export class GameSession {
 
 	#backend = getBackend();
 	#unsub: (() => void) | null = null;
+	#hall: HallHandle | null = null;
 	#turn = '';
 	#inkSeen = new Set<string>();
 	#pendingInk: Stroke | null = null;
@@ -256,6 +253,37 @@ export class GameSession {
 		localStorage.setItem(NAME_KEY, name.trim());
 	}
 
+	async enterHall(name: string) {
+		const entered = cleanName(name);
+		if (!entered) return;
+		try {
+			const playerId = this.playerId || (await this.#backend.ensurePlayerId());
+			this.playerId = playerId;
+			this.saveName(entered);
+			const me: HallGuest = {
+				id: playerId,
+				name: entered,
+				profileId: matchProfile(entered)?.id ?? null
+			};
+			this.here = [me];
+			if (this.#hall) {
+				this.#hall.update(me);
+				return;
+			}
+			this.#hall = watchHall(me, (guests) => {
+				this.here = guests;
+			});
+		} catch (err) {
+			this.#fail(err);
+		}
+	}
+
+	leaveHall() {
+		this.#hall?.stop();
+		this.#hall = null;
+		this.here = [];
+	}
+
 	async create(name: string, mode: GameMode = 'imposter'): Promise<string> {
 		this.busy = true;
 		this.error = '';
@@ -276,6 +304,7 @@ export class GameSession {
 			};
 			await this.#backend.create(emptyRoom(code, host, mode));
 			await this.attach(code, playerId);
+			void this.enterHall(name);
 			return code;
 		} catch (err) {
 			this.#fail(err);
@@ -344,6 +373,7 @@ export class GameSession {
 				}
 			}
 			await this.#backend.updatePublic(code, patch);
+			void this.enterHall(entered || name);
 		} catch (err) {
 			this.#fail(err);
 		} finally {
@@ -360,6 +390,7 @@ export class GameSession {
 				const room = await this.attach(code, this.playerId);
 				if (room?.players[this.playerId]) {
 					await this.#write({ [`players/${this.playerId}/connected`]: true });
+					void this.enterHall(room.players[this.playerId]?.name ?? this.rememberedName());
 					return 'joined';
 				}
 				if (room) result = 'join';
@@ -837,13 +868,14 @@ export class GameSession {
 		const present = this.players.filter((player) => player.connected);
 		const seats = (present.length ? present : this.players).map((player) => player.id);
 		const order = shuffle(seats);
-		const hearts = Math.max(1, room.settings.krillionHearts);
 		const turnMs = Math.max(room.settings.krillionMinSeconds, room.settings.krillionSeconds) * 1000;
+		const rounds = Math.max(4, room.settings.krillionRounds ?? 12);
+		const prompt = buildPrompt(theme.label, theme.words, []);
 		const krillion: KrillionState = {
-			turnId: order[0] ?? null,
+			turnId: null,
 			order,
-			lives: Object.fromEntries(seats.map((id) => [id, hearts])),
-			sparks: Object.fromEntries(seats.map((id) => [id, 0])),
+			lives: {},
+			sparks: {},
 			used: [],
 			answers: {},
 			scores: this.#zeroScores(),
@@ -851,7 +883,12 @@ export class GameSession {
 			turnMs,
 			lastWord: null,
 			lastPop: null,
-			winnerId: null
+			winnerId: null,
+			prompt,
+			round: 0,
+			roundTotal: rounds,
+			asked: [prompt.id],
+			board: []
 		};
 		await this.#write({
 			phase: 'krillion',
@@ -870,12 +907,13 @@ export class GameSession {
 		const room = this.room;
 		const krillion = room?.krillion;
 		if (!room || !krillion || !this.playerId || room.phase !== 'krillion') return;
-		if (krillion.turnId !== this.playerId) return;
-		if ((krillion.lives[this.playerId] ?? 0) <= 0) return;
 		const clean = text.trim().slice(0, 40);
 		if (!wordKey(clean)) return;
+		const existing = Object.values(krillion.answers).find(
+			(answer) => answer.playerId === this.playerId && !answer.resolved
+		);
 		const answer: KrillionAnswer = {
-			id: shortId(),
+			id: existing?.id ?? shortId(),
 			playerId: this.playerId,
 			text: clean,
 			valid: false,
@@ -888,14 +926,45 @@ export class GameSession {
 
 	async popKrillion() {
 		if (!this.isHost || this.room?.phase !== 'krillion') return;
-		await this.#scoreKrillion();
-		await this.#popCurrent();
+		await this.#closeKrillionRound(true);
 	}
 
 	async passKrillion() {
-		if (!this.isHost || this.room?.phase !== 'krillion') return;
-		await this.#scoreKrillion();
-		await this.#passPuffer();
+		await this.popKrillion();
+	}
+
+	async nextKrillion() {
+		const room = this.room;
+		const krillion = room?.krillion;
+		if (!this.isHost || !room || !krillion || room.phase !== 'krillion-reveal') return;
+		const theme = getTheme(room.round.themeId);
+		if (!theme) return;
+		const next = (krillion.round ?? 0) + 1;
+		const total = krillion.roundTotal ?? room.settings.krillionRounds ?? 12;
+		if (next >= total) {
+			const scores = krillion.scores;
+			const winner =
+				[...this.players].sort((a, b) => (scores[b.id] ?? 0) - (scores[a.id] ?? 0))[0]?.id ?? null;
+			await this.#write({
+				phase: 'krillion-final',
+				'krillion/turnEndsAt': null,
+				'krillion/winnerId': winner
+			});
+			return;
+		}
+		const asked = krillion.asked ?? [];
+		const prompt = buildPrompt(theme.label, theme.words, asked);
+		const turnMs = Math.max(room.settings.krillionMinSeconds, room.settings.krillionSeconds) * 1000;
+		await this.#write({
+			phase: 'krillion',
+			'krillion/prompt': prompt,
+			'krillion/round': next,
+			'krillion/asked': asked.includes(prompt.id) ? asked : [...asked, prompt.id],
+			'krillion/answers': {},
+			'krillion/board': [],
+			'krillion/turnMs': turnMs,
+			'krillion/turnEndsAt': Date.now() + turnMs
+		});
 	}
 
 	#secret(): string | null {
@@ -1132,8 +1201,7 @@ export class GameSession {
 			do {
 				this.#tickAgain = false;
 				if (this.room?.phase === 'krillion') {
-					const passed = await this.#scoreKrillion();
-					if (!passed && this.#krillionTimedOut()) await this.#popCurrent();
+					if (this.#krillionTimedOut()) await this.#closeKrillionRound(false);
 				} else {
 					const tally = await this.#scoreGuesses();
 					if (tally && this.#turnIsOver(tally)) await this.#endTurn(tally);
@@ -1226,163 +1294,30 @@ export class GameSession {
 		return Boolean(ends && Date.now() >= ends);
 	}
 
-	#present(): Set<string> {
-		return new Set(this.players.filter((player) => player.connected).map((player) => player.id));
-	}
-
-	#themePool(): Theme {
-		const current = getTheme(this.room?.round.themeId ?? this.pollChoice);
-		if (current) return current;
-		return THEMES[0]!;
-	}
-
-	#freshTheme(used: string[]): { theme: Theme; used: string[] } {
-		const taken = new Set(used.map((word) => wordKey(word)));
-		const ids = this.room?.poll.themeIds ?? THEMES.map((theme) => theme.id);
-		const current = this.room?.round.themeId;
-		const start = Math.max(0, ids.indexOf(current ?? ''));
-		for (let i = 0; i < ids.length; i++) {
-			const theme = getTheme(ids[(start + i) % ids.length]);
-			if (!theme) continue;
-			if (theme.words.some((word) => !taken.has(wordKey(word)))) return { theme, used };
-		}
-		return { theme: this.#themePool(), used: [] };
-	}
-
-	async #scoreKrillion(): Promise<boolean> {
-		const room = this.room;
-		const krillion = room?.krillion;
-		if (!this.isHost || !room || !krillion || room.phase !== 'krillion') return false;
-		const pending = Object.values(krillion.answers)
-			.filter((answer) => !answer.resolved)
-			.sort((a, b) => a.at - b.at);
-		if (pending.length === 0) return false;
-		const pool = this.#freshTheme(krillion.used);
-		const theme = pool.theme;
-		const patch: Record<string, unknown> = {};
-		let passed = false;
-		let used = [...pool.used];
-		const lives = { ...krillion.lives };
-		const sparks = { ...krillion.sparks };
-		const scores = { ...krillion.scores };
-		for (const answer of pending) {
-			const path = `krillion/answers/${answer.id}`;
-			patch[`${path}/resolved`] = true;
-			if (passed || answer.playerId !== krillion.turnId) {
-				patch[`${path}/text`] = '';
-				patch[`${path}/note`] = 'too late';
-				continue;
-			}
-			if (krillion.turnEndsAt && answer.at > krillion.turnEndsAt) {
-				patch[`${path}/text`] = '';
-				patch[`${path}/note`] = 'too late';
-				continue;
-			}
-			const result = matchKrillion(answer.text, theme.words, used);
-			if ('word' in result) {
-				const remaining = Math.max(0, (krillion.turnEndsAt ?? answer.at) - answer.at);
-				const points =
-					speedPoints(remaining, krillion.turnMs) +
-					rarityPoints(theme.words.indexOf(result.word), theme.words.length);
-				const nextSparks = (sparks[answer.playerId] ?? 0) + points;
-				const bonus = nextSparks >= SPARK_GOAL;
-				sparks[answer.playerId] = bonus ? nextSparks - SPARK_GOAL : nextSparks;
-				if (bonus) lives[answer.playerId] = (lives[answer.playerId] ?? 0) + 1;
-				scores[answer.playerId] = (scores[answer.playerId] ?? 0) + points;
-				used = [...used, result.word];
-				passed = true;
-				patch[`${path}/valid`] = true;
-				patch[`${path}/word`] = result.word;
-				patch[`${path}/points`] = points;
-				patch[`${path}/bonus`] = bonus;
-				patch[`${path}/text`] = '';
-				continue;
-			}
-			patch[`${path}/text`] = '';
-			patch[`${path}/near`] = result.near;
-			patch[`${path}/note`] = result.note;
-		}
-		if (passed) {
-			const next = this.#freshTheme(used);
-			used = next.used;
-			const turnMs = nextTurnMs(krillion.turnMs, room.settings.krillionMinSeconds);
-			const present = this.#present();
-			const turnId = nextAlive(krillion.order, krillion.turnId, lives, present);
-			patch['krillion/used'] = used;
-			patch['krillion/lives'] = lives;
-			patch['krillion/sparks'] = sparks;
-			patch['krillion/scores'] = scores;
-			patch['krillion/lastWord'] = used[used.length - 1] ?? null;
-			patch['krillion/lastPop'] = null;
-			if (next.theme.id !== room.round.themeId) patch['round/themeId'] = next.theme.id;
-			if (!turnId || aliveIds(lives, this.players).length <= 1) {
-				const winner = turnId ?? aliveIds(lives, this.players)[0] ?? krillion.turnId;
-				patch.phase = 'krillion-final';
-				patch['krillion/turnId'] = null;
-				patch['krillion/turnEndsAt'] = null;
-				patch['krillion/winnerId'] = winner;
-			} else {
-				patch['krillion/turnId'] = turnId;
-				patch['krillion/turnMs'] = turnMs;
-				patch['krillion/turnEndsAt'] = Date.now() + turnMs;
-			}
-		}
-		await this.#write(patch);
-		return passed;
-	}
-
-	async #popCurrent() {
+	async #closeKrillionRound(force: boolean) {
 		const room = this.room;
 		const krillion = room?.krillion;
 		const key = turnKey(room);
-		if (!this.isHost || !krillion || !key || room?.phase !== 'krillion' || this.#endedTurn === key) {
-			return;
-		}
-		if (!krillion.turnId) return;
+		if (!this.isHost || !room || !krillion || !key || room.phase !== 'krillion') return;
+		if (!force && !this.#krillionTimedOut()) return;
+		if (this.#endedTurn === key) return;
+		const theme = getTheme(room.round.themeId);
+		const prompt = krillion.prompt;
+		if (!theme || !prompt) return;
 		this.#endedTurn = key;
-		const lives = { ...krillion.lives };
-		lives[krillion.turnId] = Math.max(0, (lives[krillion.turnId] ?? 1) - 1);
-		const floating = aliveIds(lives, this.players);
-		const patch: Record<string, unknown> = {
-			'krillion/lives': lives,
-			'krillion/lastPop': krillion.turnId
-		};
-		if (floating.length <= 1) {
-			patch.phase = 'krillion-final';
-			patch['krillion/turnId'] = null;
-			patch['krillion/turnEndsAt'] = null;
-			patch['krillion/winnerId'] = floating[0] ?? krillion.turnId;
-		} else {
-			const turnId = nextAlive(krillion.order, krillion.turnId, lives, this.#present());
-			const turnMs = nextTurnMs(krillion.turnMs, room.settings.krillionMinSeconds);
-			if (!turnId) {
-				patch.phase = 'krillion-final';
-				patch['krillion/turnId'] = null;
-				patch['krillion/turnEndsAt'] = null;
-				patch['krillion/winnerId'] = floating[0] ?? krillion.turnId;
-			} else {
-				patch['krillion/turnId'] = turnId;
-				patch['krillion/turnMs'] = turnMs;
-				patch['krillion/turnEndsAt'] = Date.now() + turnMs;
-			}
-		}
-		const saved = await this.#write(patch);
-		if (!saved) this.#endedTurn = '';
-	}
-
-	async #passPuffer() {
-		const room = this.room;
-		const krillion = room?.krillion;
-		if (!this.isHost || !krillion || room?.phase !== 'krillion') return;
-		const turnId = nextAlive(krillion.order, krillion.turnId, krillion.lives, this.#present());
-		if (!turnId || turnId === krillion.turnId) return;
-		const turnMs = nextTurnMs(krillion.turnMs, room.settings.krillionMinSeconds);
-		await this.#write({
-			'krillion/turnId': turnId,
-			'krillion/turnMs': turnMs,
-			'krillion/turnEndsAt': Date.now() + turnMs,
-			'krillion/lastPop': null
+		const entries = Object.values(krillion.answers)
+			.filter((answer) => !answer.resolved)
+			.sort((a, b) => a.at - b.at);
+		const board = rankKrillion(entries, theme.words, prompt);
+		const scores = { ...krillion.scores };
+		for (const row of board) scores[row.playerId] = (scores[row.playerId] ?? 0) + row.points;
+		const saved = await this.#write({
+			phase: 'krillion-reveal',
+			'krillion/board': board,
+			'krillion/scores': scores,
+			'krillion/turnEndsAt': null
 		});
+		if (!saved) this.#endedTurn = '';
 	}
 
 	async #try(task: (code: string) => Promise<void>): Promise<boolean> {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { pop, rise } from '$lib/game/motion';
+	import { portrait } from '$lib/game/portrait.svelte';
 	import type { Profile } from '$lib/game/profiles';
 	import ProfileShot from './ProfileShot.svelte';
 	import Hashtags from './Hashtags.svelte';
@@ -20,17 +21,24 @@
 	const popIn = pop();
 </script>
 
-<button class="hello" type="button" onclick={onContinue} {@attach enter}>
-	<span class="pic" {@attach popIn}>
+<div class="hello" {@attach enter}>
+	<button
+		class="pic"
+		type="button"
+		aria-label={`View ${profile.displayName}`}
+		onclick={(event) =>
+			portrait.show({ id: profile.id, name: profile.displayName, profile }, event.currentTarget)}
+		{@attach popIn}
+	>
 		<ProfileShot {profile} size="xl" />
-	</span>
+	</button>
 	<h1 class="title">Welcome Back, {profile.shortName}!</h1>
 	<Hashtags tags={profile.tags} />
 	<p class="muted">{profile.displayName}</p>
 	{#if showCta}
-		<span class="btn accent">{cta}</span>
+		<button class="btn accent" type="button" onclick={onContinue}>{cta}</button>
 	{/if}
-</button>
+</div>
 
 <style>
 	.hello {
@@ -47,5 +55,9 @@
 	.pic {
 		display: grid;
 		margin-bottom: 8px;
+		padding: 0;
+		border: 0;
+		background: none;
+		cursor: pointer;
 	}
 </style>

@@ -40,18 +40,17 @@
 		[2, '2 rounds'],
 		[3, '3 rounds']
 	];
-	const HEART_OPTIONS: Options = [
-		[2, '2'],
-		[3, '3'],
-		[4, '4'],
-		[5, '5']
-	];
 	const PUFFER_OPTIONS: Options = [
-		[8, '8 sec'],
-		[10, '10 sec'],
-		[12, '12 sec'],
-		[15, '15 sec'],
-		[20, '20 sec']
+		[20, '20 sec'],
+		[30, '30 sec'],
+		[45, '45 sec'],
+		[60, '60 sec']
+	];
+	const KRILLION_ROUNDS: Options = [
+		[8, '8 rounds'],
+		[12, '12 rounds'],
+		[16, '16 rounds'],
+		[24, '24 rounds']
 	];
 
 	function withCurrent(options: Options, value: number): Options {
@@ -78,13 +77,16 @@
 		Boolean(game.sketch && game.sketch.turnIndex + 1 >= game.sketch.order.length)
 	);
 	const fill = $derived(
-		game.phase === 'sketch' || game.phase === 'sketch-reveal' || game.phase === 'krillion'
+		game.phase === 'sketch' ||
+			game.phase === 'sketch-reveal' ||
+			game.phase === 'krillion' ||
+			game.phase === 'krillion-reveal'
 	);
 	const subtitle = $derived.by(() => {
-		if (game.phase === 'krillion' && game.krillion) {
-			const floating = game.players.filter((player) => (game.krillion?.lives[player.id] ?? 0) > 0)
-				.length;
-			return `${game.theme?.label ?? 'Krillion'} · ${floating} floating`;
+		if ((game.phase === 'krillion' || game.phase === 'krillion-reveal') && game.krillion) {
+			const round = (game.krillion.round ?? 0) + 1;
+			const total = game.krillion.roundTotal ?? game.room?.settings.krillionRounds ?? 12;
+			return `${game.theme?.label ?? 'Krillion'} · ${round}/${total}`;
 		}
 		const sketch = game.sketch;
 		if ((game.phase === 'sketch' || game.phase === 'sketch-reveal') && sketch?.order.length) {
@@ -173,16 +175,16 @@
 
 {#snippet krillionSettings()}
 	{@render setting(
-		'Hearts',
-		game.room?.settings.krillionHearts ?? 3,
-		HEART_OPTIONS,
-		(n) => game.setSetting('krillionHearts', n)
+		'Round time',
+		game.room?.settings.krillionSeconds ?? 30,
+		withCurrent(PUFFER_OPTIONS, game.room?.settings.krillionSeconds ?? 30),
+		(n) => game.setKrillionSeconds(n)
 	)}
 	{@render setting(
-		'Turn time',
-		game.room?.settings.krillionSeconds ?? 12,
-		withCurrent(PUFFER_OPTIONS, game.room?.settings.krillionSeconds ?? 12),
-		(n) => game.setKrillionSeconds(n)
+		'Rounds',
+		game.room?.settings.krillionRounds ?? 12,
+		KRILLION_ROUNDS,
+		(n) => game.setSetting('krillionRounds', n)
 	)}
 {/snippet}
 
@@ -208,10 +210,11 @@
 	<details class="host-menu">
 		<summary class="pill-btn">Host</summary>
 		<div class="menu stack">
-			{#if game.phase === 'krillion'}
+			{#if game.phase === 'krillion' || game.phase === 'krillion-reveal'}
 				{@render krillionSettings()}
-				<button class="btn small" type="button" onclick={() => game.passKrillion()}>Pass</button>
-				<button class="btn small danger" type="button" onclick={() => game.popKrillion()}>Pop</button>
+				{#if game.phase === 'krillion'}
+					<button class="btn small" type="button" onclick={() => game.popKrillion()}>End round</button>
+				{/if}
 			{:else}
 				{@render sketchSettings(false)}
 				<button class="btn small" type="button" onclick={() => game.endSketchTurn()}>End turn</button>
@@ -238,7 +241,7 @@
 				<span class="team-chip">Team {game.room.teams.assignments[game.playerId]}</span>
 			{/if}
 		</div>
-		{#if game.isHost && (game.phase === 'sketch' || game.phase === 'krillion')}
+		{#if game.isHost && (game.phase === 'sketch' || game.phase === 'krillion' || game.phase === 'krillion-reveal')}
 			{@render hostMenu()}
 		{:else}
 			<span class="count">{game.playerCount}/{MAX_PLAYERS}</span>
@@ -456,6 +459,12 @@
 				<button class="btn danger" type="button" onclick={() => game.reveal()}>Reveal</button>
 			{:else if game.phase === 'result' || game.phase === 'sketch-final' || game.phase === 'krillion-final'}
 				<button class="btn accent" type="button" onclick={() => game.nextRound()}>Play again</button>
+			{:else if game.phase === 'krillion-reveal'}
+				<button class="btn accent" type="button" onclick={() => game.nextKrillion()}>
+					{(game.krillion?.round ?? 0) + 1 >= (game.krillion?.roundTotal ?? 12)
+						? 'Final scores'
+						: 'Next round'}
+				</button>
 			{:else if game.phase === 'sketch-reveal'}
 				{@render liveSketchSettings()}
 				<button class="btn accent" type="button" onclick={() => game.nextDrawer()}>

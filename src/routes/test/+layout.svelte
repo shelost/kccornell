@@ -1,5 +1,6 @@
 <script lang="ts">
 	import '$lib/game/play.css';
+	import Portrait from '$lib/game/components/Portrait.svelte';
 	import { pinKeyboard } from '$lib/game/keyboard';
 
 	let { children } = $props();
@@ -18,4 +19,5 @@
 	<div class="play-frame">
 		{@render children()}
 	</div>
+	<Portrait />
 </div>

@@ -1,13 +1,17 @@
 <script lang="ts">
 	import '$lib/game/play.css';
 	import { onDestroy } from 'svelte';
+	import Portrait from '$lib/game/components/Portrait.svelte';
 	import { pinKeyboard } from '$lib/game/keyboard';
 	import { GameSession, setSession } from '$lib/game/session.svelte';
 
 	let { children } = $props();
 
 	const session = setSession(new GameSession());
-	onDestroy(() => session.detach());
+	onDestroy(() => {
+		session.leaveHall();
+		session.detach();
+	});
 </script>
 
 <svelte:head>
@@ -24,4 +28,5 @@
 	<div class="play-frame">
 		{@render children()}
 	</div>
+	<Portrait />
 </div>

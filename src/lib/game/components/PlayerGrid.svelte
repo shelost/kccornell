@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { staggerChildren } from '$lib/game/motion';
+	import { portrait } from '$lib/game/portrait.svelte';
 	import type { Player } from '$lib/game/types';
 	import Face from './Face.svelte';
 
@@ -41,9 +42,19 @@
 				{@render face(player)}
 			</button>
 		{:else}
-			<div class="player" class:off={!player.connected}>
+			<button
+				class="player"
+				class:off={!player.connected}
+				type="button"
+				aria-label={`View ${player.name}`}
+				onclick={(event) =>
+					portrait.show(
+						{ id: player.id, name: player.name, color: player.color },
+						event.currentTarget
+					)}
+			>
 				{@render face(player)}
-			</div>
+			</button>
 		{/if}
 	{/each}
 </div>
@@ -63,7 +74,11 @@
 		gap: 6px;
 		width: 84px;
 		padding: 10px 4px;
+		border: 0;
 		border-radius: 22px;
+		background: none;
+		color: inherit;
+		cursor: pointer;
 	}
 
 	.player.pick {

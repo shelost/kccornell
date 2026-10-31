@@ -21,6 +21,12 @@
 	const profile = $derived(matchProfile(name));
 	const codeReady = $derived(normalizeCode(code).length === CODE_LENGTH);
 	const nameReady = $derived(name.trim().length >= 2);
+	const people = $derived.by(() => {
+		if (game.here.length) return game.here;
+		const trimmed = name.trim();
+		if (!trimmed) return [];
+		return [{ id: game.playerId || 'me', name: trimmed, profileId: profile?.id ?? null }];
+	});
 	const introAnim = playIntro();
 	const nextStep = $derived(
 		step === 'intro' ? 'rate' : step === 'rate' ? 'name' : step === 'welcome' ? 'lobby' : null
@@ -149,7 +155,14 @@
 </script>
 
 {#if step !== 'intro'}
-	<button class="exit-game" type="button" onclick={() => (step = 'intro')}>Exit</button>
+	<button
+		class="exit-game"
+		type="button"
+		onclick={() => {
+			game.leaveHall();
+			step = 'intro';
+		}}>Exit</button
+	>
 {/if}
 
 <div class={['home', { cinema: step === 'intro' }]} {@attach step === 'intro' && introAnim}>
@@ -190,13 +203,22 @@
 				showCta={false}
 				onSubmit={() => {
 					game.saveName(name);
+					void game.enterHall(name);
 					step = profile ? 'welcome' : 'lobby';
 				}}
 			/>
 		</div>
 	{:else if step === 'welcome' && profile}
 		<div class="stage play-col">
-			<WelcomeBack showCta={false} {profile} cta="Next" onContinue={() => (step = 'lobby')} />
+			<WelcomeBack
+				showCta={false}
+				{profile}
+				cta="Next"
+				onContinue={() => {
+					void game.enterHall(name);
+					step = 'lobby';
+				}}
+			/>
 		</div>
 	{:else}
 		<div class="lobby play-col" {@attach rise()}>
@@ -205,7 +227,7 @@
 				{profile ? `Welcome Back, ${profile.shortName}` : `Welcome, ${name.trim()}`}
 			</h1>
 			<button class="edit" type="button" onclick={() => (step = 'name')}>edit name</button>
-			<Roster activeId={profile?.id ?? null} />
+			<Roster {people} meId={game.playerId || 'me'} />
 			<form class="stack join" onsubmit={join}>
 				<input
 					class="field code"
@@ -244,7 +266,14 @@
 		</div>
 	{:else if nextStep}
 		<div class="cta-dock">
-			<button class="btn accent go" type="button" onclick={() => (step = nextStep)}>Next</button>
+			<button
+				class="btn accent go"
+				type="button"
+				onclick={() => {
+					if (nextStep === 'lobby') void game.enterHall(name);
+					step = nextStep;
+				}}>Next</button
+			>
 		</div>
 	{/if}
 </div>

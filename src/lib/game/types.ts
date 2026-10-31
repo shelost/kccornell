@@ -7,7 +7,7 @@ export type GameMode = 'imposter' | 'sketch' | 'krillion';
 export const GAMES: Record<GameMode, { label: string; blurb: string; minPlayers: number }> = {
 	imposter: { label: 'Imposter', blurb: 'Find the faker', minPlayers: 3 },
 	sketch: { label: 'Sketch', blurb: 'Draw & guess', minPlayers: 2 },
-	krillion: { label: 'Krillion', blurb: 'Pass the puffer', minPlayers: 2 }
+	krillion: { label: 'Krillion', blurb: 'Rarest word wins', minPlayers: 2 }
 };
 
 export type Phase =
@@ -21,6 +21,7 @@ export type Phase =
 	| 'sketch-reveal'
 	| 'sketch-final'
 	| 'krillion'
+	| 'krillion-reveal'
 	| 'krillion-final';
 
 export type Player = {
@@ -43,6 +44,7 @@ export type RoomSettings = {
 	krillionHearts: number;
 	krillionSeconds: number;
 	krillionMinSeconds: number;
+	krillionRounds: number;
 };
 
 export type PollState = {
@@ -117,6 +119,21 @@ export type KrillionAnswer = {
 	bonus?: boolean;
 };
 
+export type KrillionPrompt = {
+	id: string;
+	label: string;
+	kind: 'starts' | 'ends' | 'letters' | 'contains';
+	value: string;
+};
+
+export type KrillionRank = {
+	playerId: string;
+	text: string;
+	word: string | null;
+	count: number;
+	points: number;
+};
+
 export type KrillionState = {
 	turnId: string | null;
 	order: string[];
@@ -130,6 +147,11 @@ export type KrillionState = {
 	lastWord: string | null;
 	lastPop: string | null;
 	winnerId: string | null;
+	prompt?: KrillionPrompt | null;
+	round?: number;
+	roundTotal?: number;
+	asked?: string[];
+	board?: KrillionRank[];
 };
 
 export type TeamPlan = 'size' | 'count';
